@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
+import type { editor as MonacoEditor } from 'monaco-editor'
 import { io } from 'socket.io-client'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import * as Y from 'yjs'
@@ -18,11 +19,13 @@ import {
   Users,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react'
 import './App.css'
 import { bindYTextToMonaco } from './editorBinding'
 
 type Member = { id: string; name: string }
+type WorkspaceFile = { id: string; name: string; content: Y.Text }
 type ConnectionState = 'connecting' | 'connected' | 'offline'
 type JoinResponse = {
   ok: boolean
@@ -57,30 +60,100 @@ function initials(name: string) {
     .join('')
 }
 
+function createFileRecord(name: string, initialContent = '') {
+  const record = new Y.Map<unknown>()
+  const content = new Y.Text()
+  if (initialContent) content.insert(0, initialContent)
+  record.set('name', name)
+  record.set('content', content)
+  return record
+}
+
+function readWorkspaceFiles(fileMap: Y.Map<Y.Map<unknown>>): WorkspaceFile[] {
+  return [...fileMap.entries()]
+    .flatMap(([id, record]) => {
+      const name = record.get('name')
+      const content = record.get('content')
+      return typeof name === 'string' && content instanceof Y.Text
+        ? [{ id, name, content }]
+        : []
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function languageForFile(name: string) {
+  const extension = name.split('.').pop()?.toLowerCase()
+  if (extension === 'ts' || extension === 'tsx') return 'typescript'
+  if (extension === 'json') return 'json'
+  if (extension === 'css') return 'css'
+  if (extension === 'html') return 'html'
+  if (extension === 'md') return 'markdown'
+  return 'javascript'
+}
+
 function App() {
   const [name, setName] = useState(rememberedName)
   const [roomInput, setRoomInput] = useState(roomFromUrl ?? '')
   const [roomId, setRoomId] = useState(rememberedName ? roomFromUrl ?? '' : '')
   const [members, setMembers] = useState<Member[]>([])
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([])
+  const [activeFileId, setActiveFileId] = useState('')
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [localReady, setLocalReady] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
-  const docRef = useRef<Y.Doc | null>(null)
+  const [showNewFile, setShowNewFile] = useState(false)
+  const [newFileName, setNewFileName] = useState('')
+  const [fileNameError, setFileNameError] = useState('')
   const textRef = useRef<Y.Text | null>(null)
+  const filesRef = useRef<Y.Map<Y.Map<unknown>> | null>(null)
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const bindingRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!roomId || !name.trim()) return
 
     const doc = new Y.Doc()
-    const text = doc.getText('code')
+    const legacyText = doc.getText('code')
+    const files = doc.getMap<Y.Map<unknown>>('files')
     const socket = io(window.location.origin, { transports: ['websocket', 'polling'] })
     const persistence = new IndexeddbPersistence(`syncforge:${roomId}`, doc)
     let joined = false
+    let disposed = false
 
-    docRef.current = doc
-    textRef.current = text
+    filesRef.current = files
+    const refreshFiles = () => {
+      const nextFiles = readWorkspaceFiles(files)
+      setWorkspaceFiles(nextFiles)
+      setActiveFileId((current) =>
+        nextFiles.some((file) => file.id === current) ? current : nextFiles[0]?.id ?? '',
+      )
+    }
+
+    const ensureInitialFile = () => {
+      if (files.size === 0) {
+        files.set(
+          'index.js',
+          createFileRecord('index.js', legacyText.toString() || starterCode),
+        )
+        return
+      }
+
+      const legacyCode = legacyText.toString()
+      if (!legacyCode) return
+      const mainFile = files.get('index.js')
+      const mainContent = mainFile?.get('content')
+      if (mainContent instanceof Y.Text && mainContent.toString() === starterCode) {
+        mainContent.delete(0, mainContent.length)
+        mainContent.insert(0, legacyCode)
+      } else if (!files.has('legacy-index.js') && legacyCode !== starterCode) {
+        files.set('legacy-index.js', createFileRecord('legacy-index.js', legacyCode))
+      }
+    }
+
+    files.observe(refreshFiles)
+    legacyText.observe(ensureInitialFile)
+
     const sendDocument = () => {
       if (joined && socket.connected) {
         socket.emit('document:update', {
@@ -99,7 +172,8 @@ function App() {
     doc.on('update', onDocumentUpdate)
 
     persistence.whenSynced.then(() => {
-      if (text.length === 0) text.insert(0, starterCode)
+      if (disposed) return
+      ensureInitialFile()
       setLocalReady(true)
       sendDocument()
     })
@@ -114,6 +188,7 @@ function App() {
         }
         Y.applyUpdate(doc, response.state, socket)
         joined = true
+        ensureInitialFile()
         setConnection('connected')
         setMembers(response.members ?? [])
         sendDocument()
@@ -127,27 +202,47 @@ function App() {
     })
     socket.on('document:update', (update: Uint8Array) => {
       Y.applyUpdate(doc, update, socket)
+      ensureInitialFile()
     })
     socket.on('presence:update', (nextMembers: Member[]) => setMembers(nextMembers))
     socket.on('room:error', (message: string) => setError(message))
 
     return () => {
+      disposed = true
       doc.off('update', onDocumentUpdate)
+      files.unobserve(refreshFiles)
+      legacyText.unobserve(ensureInitialFile)
       bindingRef.current?.()
       bindingRef.current = null
       socket.disconnect()
       persistence.destroy()
       doc.destroy()
-      docRef.current = null
+      editorRef.current = null
+      filesRef.current = null
       textRef.current = null
     }
   }, [roomId, name])
 
+  const activeFile = workspaceFiles.find((file) => file.id === activeFileId)
+
+  useEffect(() => {
+    bindingRef.current?.()
+    bindingRef.current = null
+    textRef.current = activeFile?.content ?? null
+    if (!activeFile || !editorRef.current) return
+
+    bindingRef.current = bindYTextToMonaco(activeFile.content, editorRef.current)
+
+    return () => {
+      bindingRef.current?.()
+      bindingRef.current = null
+    }
+  }, [activeFile])
+
   const onEditorMount: OnMount = (editor) => {
-    const doc = docRef.current
     const text = textRef.current
-    const model = editor.getModel()
-    if (!doc || !text || !model) return
+    editorRef.current = editor
+    if (!text) return
     bindingRef.current?.()
     bindingRef.current = bindYTextToMonaco(text, editor)
   }
@@ -169,6 +264,8 @@ function App() {
     setConnection('connecting')
     setError('')
     setRoomInput(cleanRoom)
+    setWorkspaceFiles([])
+    setActiveFileId('')
     setRoomId(cleanRoom)
     setError('')
     window.history.replaceState(null, '', `?room=${encodeURIComponent(cleanRoom)}`)
@@ -178,7 +275,41 @@ function App() {
     setLocalReady(false)
     setRoomId('')
     setMembers([])
+    setWorkspaceFiles([])
+    setActiveFileId('')
+    setShowNewFile(false)
     window.history.replaceState(null, '', window.location.pathname)
+  }
+
+  function openNewFileDialog() {
+    setFileNameError('')
+    setNewFileName('')
+    setShowNewFile(true)
+  }
+
+  function createWorkspaceFile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const fileMap = filesRef.current
+    const fileName = newFileName.trim()
+    if (!fileMap) {
+      setFileNameError('The workspace is still loading. Try again in a moment.')
+      return
+    }
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(fileName) || fileName === '.' || fileName === '..') {
+      setFileNameError('Use 1–64 letters, numbers, dots, dashes or underscores.')
+      return
+    }
+    if (readWorkspaceFiles(fileMap).some((file) => file.name.toLowerCase() === fileName.toLowerCase())) {
+      setFileNameError('A file with that name already exists.')
+      return
+    }
+
+    const id = crypto.randomUUID()
+    fileMap.set(id, createFileRecord(fileName))
+    setActiveFileId(id)
+    setNewFileName('')
+    setFileNameError('')
+    setShowNewFile(false)
   }
 
   async function copyInvite() {
@@ -271,7 +402,7 @@ function App() {
         </a>
         <div className="topbar-divider" />
         <div className="workspace-title">
-          <span className="workspace-title-name">Untitled workspace</span>
+          <span className="workspace-title-name">Shared project</span>
           <span className="workspace-room">ROOM / {roomId}</span>
         </div>
         <div className="topbar-spacer" />
@@ -308,31 +439,58 @@ function App() {
             <button
               className="subtle-icon"
               aria-label="Add file"
-              title="Multi-file workspaces are coming soon"
-              disabled
+              title="Create a file"
+              onClick={openNewFileDialog}
+              disabled={!localReady}
             >
               <Plus size={16} />
             </button>
           </div>
           <div className="folder-row"><ChevronDown size={14} /><span>SYNCFORGE</span></div>
-          <div className="file-row active"><FileCode2 size={15} /><span>index.js</span></div>
+          <div className="file-list">
+            {workspaceFiles.map((file) => (
+              <button
+                className={`file-row${file.id === activeFileId ? ' active' : ''}`}
+                key={file.id}
+                onClick={() => setActiveFileId(file.id)}
+                title={file.name}
+              >
+                <FileCode2 size={15} />
+                <span>{file.name}</span>
+              </button>
+            ))}
+          </div>
           <div className="sidebar-bottom">
             <div className="sidebar-bottom-icon"><CircleHelp size={16} /></div>
-            <span><b>Need a hand?</b><small>Collaboration is always on.</small></span>
+            <span><b>Split the work</b><small>Open separate files to collaborate.</small></span>
           </div>
         </aside>
 
         <section className="editor-area" aria-label="Collaborative code editor">
           <div className="tabbar">
-            <div className="active-tab"><FileCode2 size={14} /><span>index.js</span></div>
+            <div className="active-tab">
+              <FileCode2 size={14} />
+              <span>{activeFile?.name ?? 'Loading file…'}</span>
+            </div>
             <div className="tabbar-spacer" />
-            <span className="editor-language">JavaScript</span>
+            <span className="editor-language">
+              {activeFile ? languageForFile(activeFile.name) : 'JavaScript'}
+            </span>
+            <button
+              className="subtle-icon tab-add-file"
+              onClick={openNewFileDialog}
+              disabled={!localReady}
+              aria-label="Create a file"
+              title="Create a file"
+            >
+              <Plus size={15} />
+            </button>
           </div>
           <div className="editor-container">
             {!localReady && <div className="editor-loading">Restoring your workspace…</div>}
             <Editor
               height="100%"
-              defaultLanguage="javascript"
+              language={activeFile ? languageForFile(activeFile.name) : 'javascript'}
               theme="vs-dark"
               onMount={onEditorMount}
               options={{
@@ -356,7 +514,7 @@ function App() {
           <footer className="editor-status">
             <span><span className={`status-dot ${connection}`} />{connection === 'connected' ? 'All changes synced' : 'Editing locally'}</span>
             <span>UTF-8</span>
-            <span>JavaScript</span>
+            <span>{activeFile ? languageForFile(activeFile.name) : 'JavaScript'}</span>
           </footer>
         </section>
 
@@ -387,6 +545,57 @@ function App() {
         <span>{localReady ? 'Local workspace ready' : 'Restoring local edits…'}</span>
         <button onClick={leaveRoom}>Leave room</button>
       </footer>
+      {showNewFile && (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowNewFile(false)
+          }}
+        >
+          <form
+            className="new-file-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-file-title"
+            onSubmit={createWorkspaceFile}
+          >
+            <div className="dialog-heading">
+              <div>
+                <span className="dialog-eyebrow">PROJECT FILES</span>
+                <h2 id="new-file-title">Create a file</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setShowNewFile(false)}
+                aria-label="Close dialog"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <label htmlFor="new-file-name">FILE NAME</label>
+            <input
+              id="new-file-name"
+              autoFocus
+              maxLength={64}
+              placeholder="e.g. utils.ts"
+              value={newFileName}
+              onChange={(event) => {
+                setNewFileName(event.target.value)
+                setFileNameError('')
+              }}
+            />
+            {fileNameError && <p className="form-error" role="alert">{fileNameError}</p>}
+            <p className="dialog-help">Files are shared with everyone in this room.</p>
+            <div className="dialog-actions">
+              <button type="button" className="cancel-button" onClick={() => setShowNewFile(false)}>
+                Cancel
+              </button>
+              <button className="primary-button" type="submit">Create file</button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   )
 }

@@ -107,6 +107,21 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   )
 
   assert.equal(firstText.toString(), secondText.toString())
+
+  const file = new Y.Map()
+  const fileContent = new Y.Text()
+  fileContent.insert(0, 'export const answer = 42')
+  file.set('name', 'utils.ts')
+  file.set('content', fileContent)
+  firstDoc.getMap('files').set('utils.ts', file)
+
+  await waitUntil(() => {
+    const sharedFile = secondDoc.getMap('files').get('utils.ts')
+    const sharedContent = sharedFile?.get('content')
+    return sharedFile?.get('name') === 'utils.ts' &&
+      sharedContent instanceof Y.Text &&
+      sharedContent.toString() === 'export const answer = 42'
+  })
 })
 
 async function waitUntil(predicate) {

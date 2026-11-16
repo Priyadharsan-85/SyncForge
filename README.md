@@ -7,7 +7,7 @@ SyncForge is an early-stage collaborative code workspace. Teammates can open the
 ## What works today
 
 - Create a room or join one using a room code or invite URL.
-- Edit the shared JavaScript document in Monaco; Yjs merges concurrent edits.
+- Create and edit multiple shared files in Monaco; Yjs merges concurrent edits.
 - Keep a local copy in browser IndexedDB and merge it back after reconnecting.
 - Show room presence and copy an invite link.
 - Optionally persist room snapshots in Redis and use the Socket.IO Redis adapter for multi-process message distribution.
@@ -52,6 +52,6 @@ npm run build
 - Add durable, restart-safe document history and verify offline/reconnect behavior with multi-client integration tests.
 - Add room authorization, rate limits, and safe-by-default deployment settings.
 - Add meaningful observability and repeatable load tests before making scalability claims.
-- Improve the editor workflow with multi-file projects, cursor awareness, and accessible keyboard interactions.
+- Improve the editor workflow with cursor awareness, file renaming/deletion, and accessible keyboard interactions.
 
 Contributions and focused bug reports are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.

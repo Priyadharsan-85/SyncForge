@@ -7,6 +7,7 @@ export function bindYTextToMonaco(
 ): () => void {
   const model = editorInstance.getModel()
   if (!model) return () => {}
+  if (model.getValue() !== text.toString()) model.setValue(text.toString())
 
   const onMonacoChange = (event: editor.IModelContentChangedEvent) => {
     const doc = text.doc
