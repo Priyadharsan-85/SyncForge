@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem in SyncForge.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the browser and whether Redis/Docker was used. Do not include private code or credentials.
+    validations:
+      required: true
