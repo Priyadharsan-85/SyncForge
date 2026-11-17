@@ -1409,3 +1409,95 @@
     font-size: 9px;
   }
 }
+
+/* Diff Viewer & Conflict Review Styles */
+.diff-viewer-container {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid #2b2c36;
+  border-radius: 6px;
+  background: #14151a;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.diff-empty {
+  padding: 24px;
+  text-align: center;
+  color: #858692;
+  font-size: 12px;
+}
+
+.diff-conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #733d3d;
+  background: #2b1717;
+  color: #ffb8b8;
+  font-size: 11px;
+}
+
+.diff-conflict-badge {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #ba3838;
+  color: #fff;
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.diff-table {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.diff-row {
+  display: flex;
+  line-height: 20px;
+  white-space: pre;
+}
+
+.diff-row-equal {
+  color: #b0b1bc;
+}
+
+.diff-row-insert {
+  background: rgba(46, 160, 67, 0.15);
+  color: #7ee787;
+}
+
+.diff-row-delete {
+  background: rgba(248, 81, 73, 0.15);
+  color: #ffa198;
+}
+
+.diff-num {
+  width: 38px;
+  flex-shrink: 0;
+  padding-right: 8px;
+  text-align: right;
+  color: #585966;
+  user-select: none;
+  border-right: 1px solid #262732;
+}
+
+.diff-sign {
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: 600;
+  user-select: none;
+}
+
+.diff-code {
+  flex: 1;
+  padding-left: 8px;
+  padding-right: 12px;
+  overflow-x: auto;
+}
+
