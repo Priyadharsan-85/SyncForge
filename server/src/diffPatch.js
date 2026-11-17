@@ -214,3 +214,104 @@ export function formatUnifiedDiff(filePath, oldText, newText, contextLines = 3) 
 
   return `${header}${hunkStrings.join('\n')}\n`
 }
+
+/**
+ * Apply structured hunks to target text.
+ * Returns the modified text or an error if the patch does not match the target text context.
+ * @param {string} targetText
+ * @param {Array<{ oldStart: number, oldCount: number, newStart: number, newCount: number, lines: Array<{ type: 'equal' | 'insert' | 'delete', text: string }> }>} hunks
+ * @returns {{ ok: true, result: string } | { ok: false, error: string, failedHunk: number }}
+ */
+export function applyHunks(targetText, hunks) {
+  if (!hunks || hunks.length === 0) {
+    return { ok: true, result: targetText }
+  }
+
+  const lines = splitLines(targetText)
+  const output = []
+  let currentLine = 1 // 1-based indexing for line numbers
+
+  for (let h = 0; h < hunks.length; h++) {
+    const hunk = hunks[h]
+
+    // Copy lines preceding this hunk
+    while (currentLine < hunk.oldStart) {
+      if (currentLine - 1 < lines.length) {
+        output.push(lines[currentLine - 1])
+      }
+      currentLine++
+    }
+
+    // Process hunk lines
+    for (const hunkLine of hunk.lines) {
+      if (hunkLine.type === 'equal') {
+        const actual = lines[currentLine - 1]
+        if (actual !== hunkLine.text) {
+          return {
+            ok: false,
+            error: `Hunk #${h + 1} context mismatch at line ${currentLine}. Expected "${hunkLine.text}", found "${actual ?? ''}".`,
+            failedHunk: h,
+          }
+        }
+        output.push(actual)
+        currentLine++
+      } else if (hunkLine.type === 'delete') {
+        const actual = lines[currentLine - 1]
+        if (actual !== hunkLine.text) {
+          return {
+            ok: false,
+            error: `Hunk #${h + 1} deletion mismatch at line ${currentLine}. Expected "${hunkLine.text}", found "${actual ?? ''}".`,
+            failedHunk: h,
+          }
+        }
+        currentLine++
+      } else if (hunkLine.type === 'insert') {
+        output.push(hunkLine.text)
+      }
+    }
+  }
+
+  // Copy any remaining lines after the last hunk
+  while (currentLine - 1 < lines.length) {
+    output.push(lines[currentLine - 1])
+    currentLine++
+  }
+
+  return { ok: true, result: output.join('\n') }
+}
+
+/**
+ * Invert hunks to create a rollback / reverse patch.
+ * @param {Array<{ oldStart: number, oldCount: number, newStart: number, newCount: number, lines: Array<{ type: 'equal' | 'insert' | 'delete', text: string }> }>} hunks
+ * @returns {Array<{ oldStart: number, oldCount: number, newStart: number, newCount: number, lines: Array<{ type: 'equal' | 'insert' | 'delete', text: string }> }>}
+ */
+export function invertHunks(hunks) {
+  return hunks.map((hunk) => ({
+    oldStart: hunk.newStart,
+    oldCount: hunk.newCount,
+    newStart: hunk.oldStart,
+    newCount: hunk.oldCount,
+    lines: hunk.lines.map((l) => ({
+      type: l.type === 'insert' ? 'delete' : l.type === 'delete' ? 'insert' : 'equal',
+      text: l.text,
+    })),
+  }))
+}
+
+/**
+ * Compute patch stats (lines added, deleted, hunks count).
+ * @param {Array<{ lines: Array<{ type: 'equal' | 'insert' | 'delete' }> }>} hunks
+ * @returns {{ additions: number, deletions: number, hunksCount: number }}
+ */
+export function computePatchStats(hunks) {
+  let additions = 0
+  let deletions = 0
+  for (const hunk of hunks) {
+    for (const line of hunk.lines) {
+      if (line.type === 'insert') additions++
+      if (line.type === 'delete') deletions++
+    }
+  }
+  return { additions, deletions, hunksCount: hunks.length }
+}
+
