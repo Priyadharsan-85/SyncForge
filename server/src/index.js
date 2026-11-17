@@ -11,6 +11,7 @@ import { cleanDisplayName, isValidRoomId } from './validation.js'
 const PORT = Number(process.env.PORT ?? 3001)
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
 const REDIS_URL = process.env.REDIS_URL
+const READINESS_TIMEOUT_MS = 1_000
 const rooms = new Map()
 const members = new Map()
 const redisConnections = []
@@ -26,12 +27,28 @@ app.get('/ready', async (_request, response) => {
     return
   }
 
+  if (!persistenceClient.isReady) {
+    response.status(503).json({ status: 'unavailable', persistence: 'redis' })
+    return
+  }
+
+  let timeout
   try {
-    await persistenceClient.ping()
+    await Promise.race([
+      persistenceClient.ping(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('Redis readiness probe timed out')),
+          READINESS_TIMEOUT_MS,
+        )
+      }),
+    ])
     response.json({ status: 'ok', persistence: 'redis' })
   } catch (error) {
     console.error('Readiness check failed:', error)
     response.status(503).json({ status: 'unavailable', persistence: 'redis' })
+  } finally {
+    clearTimeout(timeout)
   }
 })
 

@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { createClient } from 'redis'
 import { io } from 'socket.io-client'
 import * as Y from 'yjs'
 
@@ -176,6 +177,19 @@ test('Redis-backed workspace recovers after restarting the server', {
 
   await startServer()
   socket = await connect(url)
+  const redisClient = createClient({ url: process.env.REDIS_TEST_URL })
+  await redisClient.connect()
+  await redisClient.sendCommand(['CLIENT', 'PAUSE', '1800', 'ALL'])
+  const readinessStart = Date.now()
+  const stalledReadiness = await fetch(`${url}/ready`)
+  assert.equal(stalledReadiness.status, 503)
+  assert.deepEqual(await stalledReadiness.json(), {
+    status: 'unavailable',
+    persistence: 'redis',
+  })
+  assert.ok(Date.now() - readinessStart < 1_600)
+  await redisClient.quit()
+
   const initialJoin = await joinRoom(socket, roomId, 'Alex')
   const firstDoc = new Y.Doc()
   Y.applyUpdate(firstDoc, initialJoin.state)

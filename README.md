@@ -25,7 +25,7 @@ npm run dev
 
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Redis is optional for local development; without it, room state lives only in the server process. Production mode requires `REDIS_URL`.
 
-The server exposes `/health` for liveness and `/ready` for readiness. When Redis is configured, `/ready` checks Redis connectivity; without Redis it reports `persistence: "memory"`.
+The server exposes `/health` for liveness and `/ready` for readiness. When Redis is configured, `/ready` performs a bounded Redis connectivity check and returns `503` if Redis is unavailable; without Redis it reports `persistence: "memory"`.
 
 To run the containerized development stack:
 
