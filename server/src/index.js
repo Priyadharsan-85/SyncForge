@@ -13,7 +13,6 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
 const REDIS_URL = process.env.REDIS_URL
 const READINESS_TIMEOUT_MS = 1_000
 const rooms = new Map()
-const members = new Map()
 const redisConnections = []
 
 const app = express()
@@ -79,8 +78,18 @@ async function getRoomDocument(roomId) {
   }
 }
 
-function getRoomMembers(roomId) {
-  return [...(members.get(roomId)?.entries() ?? [])].map(([id, name]) => ({ id, name }))
+async function getRoomMembers(roomId) {
+  const sockets = await io.in(roomId).fetchSockets()
+  return sockets.map((roomSocket) => ({
+    id: roomSocket.id,
+    name: roomSocket.data.displayName,
+  }))
+}
+
+function publishRoomMembers(roomId) {
+  getRoomMembers(roomId)
+    .then((roomMembers) => io.to(roomId).emit('presence:update', roomMembers))
+    .catch((error) => console.error(`Could not load presence for room ${roomId}:`, error))
 }
 
 function leaveCurrentRoom(socket) {
@@ -88,11 +97,9 @@ function leaveCurrentRoom(socket) {
   if (!roomId) return
 
   socket.leave(roomId)
-  const roomMembers = members.get(roomId)
-  roomMembers?.delete(socket.id)
-  if (roomMembers?.size === 0) members.delete(roomId)
   socket.data.roomId = undefined
-  io.to(roomId).emit('presence:update', getRoomMembers(roomId))
+  socket.data.displayName = undefined
+  publishRoomMembers(roomId)
 }
 
 io.on('connection', (socket) => {
@@ -115,14 +122,14 @@ io.on('connection', (socket) => {
       const doc = await getRoomDocument(roomId)
       await socket.join(roomId)
       socket.data.roomId = roomId
-      if (!members.has(roomId)) members.set(roomId, new Map())
-      members.get(roomId).set(socket.id, name)
+      socket.data.displayName = name
+      const roomMembers = await getRoomMembers(roomId)
       reply({
         ok: true,
         state: Y.encodeStateAsUpdate(doc),
-        members: getRoomMembers(roomId),
+        members: roomMembers,
       })
-      io.to(roomId).emit('presence:update', getRoomMembers(roomId))
+      io.to(roomId).emit('presence:update', roomMembers)
     } catch (error) {
       console.error(`Could not join room ${roomId}:`, error)
       reply({ ok: false, error: 'The workspace could not be loaded. Please try again.' })

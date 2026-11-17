@@ -151,6 +151,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   const roomId = `restart-${Date.now()}`
   let child
   let socket
+  let redisClient
 
   const startServer = async () => {
     child = spawn(process.execPath, ['src/index.js'], {
@@ -172,6 +173,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   }
   t.after(async () => {
     socket?.disconnect()
+    if (redisClient?.isOpen) await redisClient.quit()
     await stopServer()
   })
 
@@ -182,7 +184,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   Y.applyUpdate(firstDoc, initialJoin.state)
   firstDoc.getText('code').insert(0, 'survives restart')
 
-  const redisClient = createClient({ url: process.env.REDIS_TEST_URL })
+  redisClient = createClient({ url: process.env.REDIS_TEST_URL })
   await redisClient.connect()
   await redisClient.sendCommand(['CLIENT', 'PAUSE', '5000', 'ALL'])
   const readinessStart = Date.now()
@@ -229,6 +231,58 @@ test('Redis-backed workspace recovers after restarting the server', {
   Y.applyUpdate(restoredDoc, restoredJoin.state)
   assert.equal(restoredDoc.getText('code').toString(), 'survives restart')
   restoredDoc.destroy()
+})
+
+test('presence includes members connected to different server instances', {
+  skip: !process.env.REDIS_TEST_URL,
+  timeout: 30_000,
+}, async (t) => {
+  const firstPort = await findOpenPort()
+  let secondPort = await findOpenPort()
+  while (secondPort === firstPort) secondPort = await findOpenPort()
+  const firstUrl = `http://127.0.0.1:${firstPort}`
+  const secondUrl = `http://127.0.0.1:${secondPort}`
+  const servers = [firstPort, secondPort].map((port) => spawn(process.execPath, ['src/index.js'], {
+    cwd: serverDirectory,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      REDIS_URL: process.env.REDIS_TEST_URL,
+    },
+    stdio: 'ignore',
+  }))
+  const sockets = []
+  t.after(async () => {
+    for (const socket of sockets) socket.disconnect()
+    await Promise.all(servers.map(async (server) => {
+      if (server.exitCode !== null || server.signalCode !== null) return
+      const exited = once(server, 'exit')
+      server.kill('SIGTERM')
+      await exited
+    }))
+  })
+
+  await Promise.all([
+    waitForServer(servers[0], firstUrl),
+    waitForServer(servers[1], secondUrl),
+  ])
+  const firstSocket = await connect(firstUrl)
+  const secondSocket = await connect(secondUrl)
+  sockets.push(firstSocket, secondSocket)
+  const roomId = `presence-${Date.now()}`
+  await joinRoom(firstSocket, roomId, 'Alex')
+  const firstPresenceUpdate = once(firstSocket, 'presence:update')
+  const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')
+  const [updatedMembers] = await firstPresenceUpdate
+
+  assert.deepEqual(
+    secondJoin.members.map((member) => member.name).sort(),
+    ['Alex', 'Sam'],
+  )
+  assert.deepEqual(
+    updatedMembers.map((member) => member.name).sort(),
+    ['Alex', 'Sam'],
+  )
 })
 
 async function waitUntil(predicate) {
