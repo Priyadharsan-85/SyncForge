@@ -5,7 +5,7 @@ import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { Server } from 'socket.io'
 import * as Y from 'yjs'
-import { appendRoomUpdate, restoreRoomDocument } from './redisStore.js'
+import { appendRoomUpdate, restoreRoomDocument, withRedisTimeout } from './redisStore.js'
 import { cleanDisplayName, isValidRoomId } from './validation.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -174,9 +174,12 @@ io.on('connection', (socket) => {
 
     if (updatePublisher) {
       try {
-        await updatePublisher.publish(
-          'syncforge:document-updates',
-          JSON.stringify({ roomId, update: Buffer.from(update).toString('base64') }),
+        await withRedisTimeout(
+          updatePublisher.publish(
+            'syncforge:document-updates',
+            JSON.stringify({ roomId, update: Buffer.from(update).toString('base64') }),
+          ),
+          'Redis document update publish timed out',
         )
       } catch (error) {
         console.error(`Could not replicate update for room ${roomId}:`, error)

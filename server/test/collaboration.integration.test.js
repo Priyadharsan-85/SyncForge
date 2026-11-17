@@ -177,9 +177,14 @@ test('Redis-backed workspace recovers after restarting the server', {
 
   await startServer()
   socket = await connect(url)
+  const initialJoin = await joinRoom(socket, roomId, 'Alex')
+  const firstDoc = new Y.Doc()
+  Y.applyUpdate(firstDoc, initialJoin.state)
+  firstDoc.getText('code').insert(0, 'survives restart')
+
   const redisClient = createClient({ url: process.env.REDIS_TEST_URL })
   await redisClient.connect()
-  await redisClient.sendCommand(['CLIENT', 'PAUSE', '1800', 'ALL'])
+  await redisClient.sendCommand(['CLIENT', 'PAUSE', '5000', 'ALL'])
   const readinessStart = Date.now()
   const stalledReadiness = await fetch(`${url}/ready`)
   assert.equal(stalledReadiness.status, 503)
@@ -188,12 +193,22 @@ test('Redis-backed workspace recovers after restarting the server', {
     persistence: 'redis',
   })
   assert.ok(Date.now() - readinessStart < 1_600)
+
+  const failedUpdateStart = Date.now()
+  const failedUpdate = await new Promise((resolve) => {
+    socket.emit('document:update', {
+      roomId,
+      update: Y.encodeStateAsUpdate(firstDoc),
+    }, resolve)
+  })
+  assert.deepEqual(failedUpdate, {
+    ok: false,
+    retryable: true,
+    error: 'The document update could not be saved.',
+  })
+  assert.ok(Date.now() - failedUpdateStart < 4_500)
   await redisClient.quit()
 
-  const initialJoin = await joinRoom(socket, roomId, 'Alex')
-  const firstDoc = new Y.Doc()
-  Y.applyUpdate(firstDoc, initialJoin.state)
-  firstDoc.getText('code').insert(0, 'survives restart')
   const updateResult = await new Promise((resolve) => {
     socket.emit('document:update', {
       roomId,
