@@ -25,13 +25,21 @@ function branchKey(roomId, branchName) {
   return `syncforge:workspace:${roomId}:branch:${branchName}`
 }
 
-function branchesSetKey(roomId) {
-  return `syncforge:workspace:${roomId}:branches`
-}
+const branchesSetKey = (roomId) => `syncforge:workspace:${roomId}:branches`
+const commitKey = (roomId, commitId) => `syncforge:workspace:${roomId}:commit:${commitId}`
 
-function commitKey(roomId, commitId) {
-  return `syncforge:workspace:${roomId}:commit:${commitId}`
-}
+const SERIALIZED_PUSH_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if not current then return -1 end
+local branch = cjson.decode(current)
+if ARGV[1] ~= '' and branch.headCommitId ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[2], ARGV[2])
+branch.headCommitId = ARGV[3]
+redis.call('SET', KEYS[1], cjson.encode(branch))
+return 1
+`
 
 export function validateBranchName(name) {
   if (
@@ -227,3 +235,93 @@ export async function getBranchCommits(client, roomId, branchName, limit = 20) {
 
   return history
 }
+
+/**
+ * Commit a snapshot to a branch with serialization and optimistic concurrency control.
+ *
+ * @param {import('redis').RedisClientType | null} client
+ * @param {object} params
+ * @param {string} params.roomId
+ * @param {string} params.branchName
+ * @param {string} params.message
+ * @param {object} params.author
+ * @param {Record<string, string>} params.tree
+ * @param {string | null} [params.expectedParentCommitId]
+ * @returns {Promise<object>} New commit record
+ */
+export async function createCommit(client, {
+  roomId,
+  branchName,
+  message,
+  author,
+  tree,
+  expectedParentCommitId = null,
+}) {
+  validateBranchName(branchName)
+  if (!message || typeof message !== 'string') {
+    throw new BranchManagerError('A commit message is required.')
+  }
+  if (!tree || typeof tree !== 'object') {
+    throw new BranchManagerError('A valid file tree object is required.')
+  }
+
+  const commitId = randomUUID().replace(/-/g, '')
+  const timestamp = new Date().toISOString()
+  const treeHash = computeTreeHash(tree)
+
+  const newCommit = {
+    commitId,
+    parentCommitId: expectedParentCommitId,
+    message: message.trim().slice(0, 200),
+    author: {
+      id: String(author.id),
+      name: author.name,
+      login: author.login,
+    },
+    tree: { ...tree },
+    treeHash,
+    timestamp,
+  }
+
+  if (client) {
+    const bKey = branchKey(roomId, branchName)
+    const cKey = commitKey(roomId, commitId)
+    const result = await withRedisTimeout(
+      client.eval(SERIALIZED_PUSH_SCRIPT, {
+        keys: [bKey, cKey],
+        arguments: [expectedParentCommitId || '', JSON.stringify(newCommit), commitId],
+      }),
+      'Branch commit push timed out',
+    )
+
+    if (result === -1) {
+      throw new BranchManagerError(`Branch "${branchName}" does not exist.`, 404)
+    }
+    if (result === 0) {
+      throw new BranchManagerError(
+        `Branch "${branchName}" has moved ahead. Fetch latest changes before committing.`,
+        409,
+      )
+    }
+  } else {
+    const roomBranches = memoryWorkspaceBranches.get(roomId)
+    const branch = roomBranches?.get(branchName)
+    if (!branch) {
+      throw new BranchManagerError(`Branch "${branchName}" does not exist.`, 404)
+    }
+
+    if (expectedParentCommitId && branch.headCommitId !== expectedParentCommitId) {
+      throw new BranchManagerError(
+        `Branch "${branchName}" has moved ahead. Fetch latest changes before committing.`,
+        409,
+      )
+    }
+
+    branch.headCommitId = commitId
+    newCommit.parentCommitId = expectedParentCommitId ?? branch.headCommitId
+    memoryWorkspaceCommits.get(roomId).set(commitId, newCommit)
+  }
+
+  return newCommit
+}
+
