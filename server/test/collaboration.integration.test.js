@@ -75,6 +75,10 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   })
 
   await waitForServer(child, url)
+  const readiness = await fetch(`${url}/ready`)
+  assert.equal(readiness.status, 200)
+  assert.deepEqual(await readiness.json(), { status: 'ok', persistence: 'memory' })
+
   const roomId = `test-${Date.now()}`
   const firstSocket = await connect(url)
   const secondSocket = await connect(url)
@@ -122,6 +126,17 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
       sharedContent instanceof Y.Text &&
       sharedContent.toString() === 'export const answer = 42'
   })
+})
+
+test('production server refuses to start without Redis persistence', async () => {
+  const child = spawn(process.execPath, ['src/index.js'], {
+    cwd: serverDirectory,
+    env: { ...process.env, NODE_ENV: 'production', PORT: '0', REDIS_URL: '' },
+    stdio: 'ignore',
+  })
+
+  const [code] = await once(child, 'exit')
+  assert.equal(code, 1)
 })
 
 async function waitUntil(predicate) {

@@ -5,6 +5,7 @@ import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { Server } from 'socket.io'
 import * as Y from 'yjs'
+import { appendRoomUpdate, restoreRoomDocument } from './redisStore.js'
 import { cleanDisplayName, isValidRoomId } from './validation.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -12,13 +13,26 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
 const REDIS_URL = process.env.REDIS_URL
 const rooms = new Map()
 const members = new Map()
-const pendingSnapshots = new Map()
 const redisConnections = []
 
 const app = express()
 app.use(cors({ origin: CLIENT_ORIGIN }))
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok', collaboration: 'yjs' })
+})
+app.get('/ready', async (_request, response) => {
+  if (!persistenceClient) {
+    response.json({ status: 'ok', persistence: 'memory' })
+    return
+  }
+
+  try {
+    await persistenceClient.ping()
+    response.json({ status: 'ok', persistence: 'redis' })
+  } catch (error) {
+    console.error('Readiness check failed:', error)
+    response.status(503).json({ status: 'unavailable', persistence: 'redis' })
+  }
 })
 
 const httpServer = createServer(app)
@@ -33,12 +47,9 @@ let updatePublisher
 async function getRoomDocument(roomId) {
   if (!rooms.has(roomId)) {
     const loading = (async () => {
-      const doc = new Y.Doc()
-      if (persistenceClient) {
-        const snapshot = await persistenceClient.get(`syncforge:room:${roomId}`)
-        if (snapshot) Y.applyUpdate(doc, Buffer.from(snapshot, 'base64'))
-      }
-      return doc
+      return persistenceClient
+        ? restoreRoomDocument(persistenceClient, roomId)
+        : new Y.Doc()
     })()
     rooms.set(roomId, loading)
   }
@@ -49,28 +60,6 @@ async function getRoomDocument(roomId) {
     if (rooms.get(roomId) === loading) rooms.delete(roomId)
     throw error
   }
-}
-
-async function storeRoomSnapshot(roomId) {
-  if (!persistenceClient) return
-  const doc = await getRoomDocument(roomId)
-  const state = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64')
-  await persistenceClient.set(`syncforge:room:${roomId}`, state)
-}
-
-function persistRoom(roomId) {
-  if (!persistenceClient) return
-  const existing = pendingSnapshots.get(roomId)
-  if (existing) clearTimeout(existing)
-  const timer = setTimeout(async () => {
-    pendingSnapshots.delete(roomId)
-    try {
-      await storeRoomSnapshot(roomId)
-    } catch (error) {
-      console.error(`Could not persist room ${roomId}:`, error)
-    }
-  }, 250)
-  pendingSnapshots.set(roomId, timer)
 }
 
 function getRoomMembers(roomId) {
@@ -135,11 +124,17 @@ io.on('connection', (socket) => {
     let doc
     try {
       doc = await getRoomDocument(roomId)
+      const validationDoc = new Y.Doc()
+      try {
+        Y.applyUpdate(validationDoc, update)
+      } finally {
+        validationDoc.destroy()
+      }
+      if (persistenceClient) await appendRoomUpdate(persistenceClient, roomId, update)
       Y.applyUpdate(doc, update)
       socket.to(roomId).emit('document:update', update)
-      persistRoom(roomId)
     } catch (error) {
-      console.error(`Rejected malformed update for room ${roomId}:`, error)
+      console.error(`Could not persist or apply update for room ${roomId}:`, error)
       socket.emit('room:error', 'A document update could not be applied.')
       return
     }
@@ -161,6 +156,10 @@ io.on('connection', (socket) => {
 })
 
 async function start() {
+  if (process.env.NODE_ENV === 'production' && !REDIS_URL) {
+    throw new Error('REDIS_URL is required in production for durable workspace storage.')
+  }
+
   if (REDIS_URL) {
     persistenceClient = createClient({ url: REDIS_URL })
     redisConnections.push(persistenceClient)
@@ -189,7 +188,6 @@ async function start() {
         if (!isValidRoomId(roomId) || typeof encodedUpdate !== 'string') return
         const doc = await getRoomDocument(roomId)
         Y.applyUpdate(doc, Buffer.from(encodedUpdate, 'base64'))
-        persistRoom(roomId)
       } catch (error) {
         console.error('Could not apply a Redis document update:', error)
       }
@@ -210,16 +208,6 @@ let shuttingDown = false
 async function shutdown() {
   if (shuttingDown) return
   shuttingDown = true
-  for (const [roomId, timer] of pendingSnapshots) {
-    clearTimeout(timer)
-    pendingSnapshots.delete(roomId)
-    try {
-      await storeRoomSnapshot(roomId)
-    } catch (error) {
-      console.error(`Could not flush room ${roomId} during shutdown:`, error)
-    }
-  }
-
   await new Promise((resolve) => io.close(resolve))
   await Promise.all(
     redisConnections.filter((client) => client.isOpen).map((client) => client.quit()),
