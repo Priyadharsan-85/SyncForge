@@ -12,6 +12,7 @@ SyncForge is an early-stage collaborative code workspace. Teammates can open the
 - Show room presence and copy an invite link.
 - Append each accepted document update to a Redis stream before broadcasting it, then replay updates after a server restart.
 - Use the Socket.IO Redis adapter for multi-process message distribution.
+- Share participant presence across server instances and evict idle room documents from Redis-backed server memory.
 - Run the web app, Node.js server, and Redis with Docker Compose.
 
 ## Run locally

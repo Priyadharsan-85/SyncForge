@@ -12,7 +12,10 @@ const PORT = Number(process.env.PORT ?? 3001)
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
 const REDIS_URL = process.env.REDIS_URL
 const READINESS_TIMEOUT_MS = 1_000
+const ROOM_IDLE_TTL_MS = 60_000
 const rooms = new Map()
+const localRoomMembers = new Map()
+const roomEvictionTimers = new Map()
 const redisConnections = []
 
 const app = express()
@@ -60,7 +63,30 @@ const io = new Server(httpServer, {
 let persistenceClient
 let updatePublisher
 
+function cancelRoomEviction(roomId) {
+  const timer = roomEvictionTimers.get(roomId)
+  if (timer) clearTimeout(timer)
+  roomEvictionTimers.delete(roomId)
+}
+
+function scheduleRoomEviction(roomId) {
+  if (!persistenceClient || localRoomMembers.has(roomId)) return
+  cancelRoomEviction(roomId)
+  const timer = setTimeout(() => {
+    roomEvictionTimers.delete(roomId)
+    if (localRoomMembers.has(roomId)) return
+    const loading = rooms.get(roomId)
+    if (!loading) return
+    rooms.delete(roomId)
+    loading.then((doc) => doc.destroy()).catch((error) => {
+      console.error(`Could not evict idle room ${roomId}:`, error)
+    })
+  }, ROOM_IDLE_TTL_MS)
+  roomEvictionTimers.set(roomId, timer)
+}
+
 async function getRoomDocument(roomId) {
+  cancelRoomEviction(roomId)
   if (!rooms.has(roomId)) {
     const loading = (async () => {
       return persistenceClient
@@ -97,9 +123,13 @@ function leaveCurrentRoom(socket) {
   if (!roomId) return
 
   socket.leave(roomId)
+  const roomMembers = localRoomMembers.get(roomId)
+  roomMembers?.delete(socket.id)
+  if (roomMembers?.size === 0) localRoomMembers.delete(roomId)
   socket.data.roomId = undefined
   socket.data.displayName = undefined
   publishRoomMembers(roomId)
+  scheduleRoomEviction(roomId)
 }
 
 io.on('connection', (socket) => {
@@ -123,6 +153,8 @@ io.on('connection', (socket) => {
       await socket.join(roomId)
       socket.data.roomId = roomId
       socket.data.displayName = name
+      if (!localRoomMembers.has(roomId)) localRoomMembers.set(roomId, new Set())
+      localRoomMembers.get(roomId).add(socket.id)
       const roomMembers = await getRoomMembers(roomId)
       reply({
         ok: true,
@@ -242,6 +274,7 @@ async function start() {
         if (!isValidRoomId(roomId) || typeof encodedUpdate !== 'string') return
         const doc = await getRoomDocument(roomId)
         Y.applyUpdate(doc, Buffer.from(encodedUpdate, 'base64'))
+        scheduleRoomEviction(roomId)
       } catch (error) {
         console.error('Could not apply a Redis document update:', error)
       }
@@ -263,6 +296,17 @@ async function shutdown() {
   if (shuttingDown) return
   shuttingDown = true
   await new Promise((resolve) => io.close(resolve))
+  for (const timer of roomEvictionTimers.values()) clearTimeout(timer)
+  roomEvictionTimers.clear()
+  for (const loading of rooms.values()) {
+    try {
+      const doc = await loading
+      doc.destroy()
+    } catch (error) {
+      console.error('Could not dispose of a workspace during shutdown:', error)
+    }
+  }
+  rooms.clear()
   await Promise.all(
     redisConnections.filter((client) => client.isOpen).map((client) => client.quit()),
   )
