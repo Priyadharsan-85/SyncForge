@@ -2250,5 +2250,91 @@
   color: #f0e6da;
 }
 
+/* Topbar Action Buttons for Branches & AI */
+.branch-pill-button,
+.ai-trigger-button {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #393a45;
+  border-radius: 6px;
+  background: #202127;
+  color: #d9dae2;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.branch-pill-button:hover {
+  border-color: #555765;
+  background: #282932;
+  color: #ffffff;
+}
+
+.branch-pill-button svg {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.ai-trigger-button {
+  border-color: #4c3d75;
+  background: #221c38;
+  color: #c4b5fd;
+}
+
+.ai-trigger-button:hover:not(:disabled) {
+  border-color: #6d54af;
+  background: #2b2247;
+  color: #ede9fe;
+}
+
+.ai-trigger-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-trigger-button svg {
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.tabbar-ai-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: center;
+  margin-right: 12px;
+  padding: 3px 9px;
+  border: 1px solid #3c3258;
+  border-radius: 4px;
+  background: #1c172a;
+  color: #bfa5ff;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tabbar-ai-button:hover:not(:disabled) {
+  border-color: #5c4794;
+  background: #251e3a;
+  color: #dfd2ff;
+}
+
+.tabbar-ai-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tabbar-ai-button svg {
+  color: #a78bfa;
+}
+
+
 
 

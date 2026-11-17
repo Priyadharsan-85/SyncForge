@@ -12,16 +12,20 @@ import {
   Code2,
   Copy,
   FileCode2,
+  GitBranch,
   Github,
   LogOut,
   Plus,
   Radio,
+  Sparkles,
   Users,
   Wifi,
   WifiOff,
   X,
 } from 'lucide-react'
 import './App.css'
+import { AiAssistantModal } from './AiAssistantModal'
+import { BranchManagerModal } from './BranchManagerModal'
 import { bindYTextToMonaco } from './editorBinding'
 import {
   readProjectFolder,
@@ -140,6 +144,9 @@ function App() {
   const [showNewFile, setShowNewFile] = useState(false)
   const [newFileName, setNewFileName] = useState('')
   const [fileNameError, setFileNameError] = useState('')
+  const [showAiModal, setShowAiModal] = useState(false)
+  const [showBranchModal, setShowBranchModal] = useState(false)
+  const [activeBranch, setActiveBranch] = useState('main')
   const textRef = useRef<Y.Text | null>(null)
   const filesRef = useRef<Y.Map<Y.Map<unknown>> | null>(null)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
@@ -566,7 +573,32 @@ function App() {
     setWorkspaceFiles([])
     setActiveFileId('')
     setShowNewFile(false)
+    setShowAiModal(false)
+    setShowBranchModal(false)
+    setActiveBranch('main')
     window.history.replaceState(null, '', window.location.pathname)
+  }
+
+  function handleAcceptAiPatch(newContent: string) {
+    if (!activeFile) return
+    activeFile.content.delete(0, activeFile.content.length)
+    activeFile.content.insert(0, newContent)
+    setShowAiModal(false)
+    setWorkspaceNotice(`Applied AI proposal to ${activeFile.name}.`)
+  }
+
+  async function handleSyncLive(branchName: string) {
+    try {
+      const response = await fetch(
+        `/api/workspaces/${roomId}/branches/${encodeURIComponent(branchName)}/sync-live`,
+        { method: 'POST' },
+      )
+      const result = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok) throw new Error(result.error ?? 'Failed to sync branch to live workspace.')
+      setWorkspaceNotice(`Successfully synced branch "${branchName}" to the live workspace.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sync branch to live workspace.')
+    }
   }
 
   function openNewFileDialog() {
@@ -760,6 +792,27 @@ function App() {
           <span className="workspace-title-name">Shared project</span>
           <span className="workspace-room">ROOM / {roomId}</span>
         </div>
+        <div className="topbar-divider" />
+        <button
+          type="button"
+          className="branch-pill-button"
+          onClick={() => setShowBranchModal(true)}
+          title="Branch manager & snapshots"
+        >
+          <GitBranch size={13} />
+          <span>{activeBranch}</span>
+          <ChevronDown size={11} />
+        </button>
+        <button
+          type="button"
+          className="ai-trigger-button"
+          onClick={() => setShowAiModal(true)}
+          disabled={!activeFile}
+          title={activeFile ? `Open AI Assistant for ${activeFile.name}` : 'Select a file to use AI Assistant'}
+        >
+          <Sparkles size={13} />
+          <span>AI Assistant</span>
+        </button>
         <div className="topbar-spacer" />
         <div className={`connection-pill ${connection}`} title={connection === 'connected' ? 'Connected. Changes sync live.' : 'Reconnecting. Local edits are saved on this device.'}>
           <span className="connection-dot" />
@@ -833,6 +886,16 @@ function App() {
               <span>{activeFile?.name ?? 'Loading file…'}</span>
             </div>
             <div className="tabbar-spacer" />
+            <button
+              type="button"
+              className="tabbar-ai-button"
+              onClick={() => setShowAiModal(true)}
+              disabled={!activeFile}
+              title="Open AI proposal modal"
+            >
+              <Sparkles size={12} />
+              <span>AI Propose</span>
+            </button>
             <span className="editor-language">
               {activeFile ? languageForFile(activeFile.name) : 'JavaScript'}
             </span>
@@ -971,6 +1034,29 @@ function App() {
             </div>
           </form>
         </div>
+      )}
+      {showAiModal && activeFile && (
+        <AiAssistantModal
+          roomId={roomId}
+          activeFileName={activeFile.name}
+          activeFileId={activeFile.id}
+          currentFileContent={activeFile.content.toString()}
+          onClose={() => setShowAiModal(false)}
+          onAcceptPatch={handleAcceptAiPatch}
+        />
+      )}
+      {showBranchModal && (
+        <BranchManagerModal
+          roomId={roomId}
+          activeBranch={activeBranch}
+          workspaceFiles={workspaceFiles.map((file) => ({
+            name: file.name,
+            content: file.content.toString(),
+          }))}
+          onClose={() => setShowBranchModal(false)}
+          onBranchSelect={(branch) => setActiveBranch(branch)}
+          onSyncLive={handleSyncLive}
+        />
       )}
     </main>
   )

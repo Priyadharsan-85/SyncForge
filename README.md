@@ -29,6 +29,9 @@
 - **Recover safely:** accepted document changes are persisted to Redis before they are broadcast to collaborators.
 - **Scale out:** the Socket.IO Redis adapter shares room events and presence between server instances.
 - **Stay responsive:** Redis-backed action limits are shared across server instances.
+- **Reviewable AI proposals:** AI edits are generated as private line-level diff drafts with addition/deletion statistics and concurrent conflict rebase detection before any change touches the live collaborative workspace.
+- **Branch snapshots & pull requests:** create named branches from commit snapshots, review unified PR diffs with 3-way semantic conflict checks, and sync snapshots back to the live workspace on demand.
+- **Safe GitHub patch workflows:** read-only OAuth tokens are guardrailed against unauthorized remote writes, with one-click export to standard Git `.patch` files.
 
 Local imports support up to 300 text files, 512 KiB per file, and 6 MiB total. ZIP files are limited to 20 MiB compressed and 16 MiB expanded. Binary and common generated/dependency directories are skipped.
 
@@ -94,7 +97,8 @@ npm run build
 
 - Add structured logs, metrics, and alerts for collaboration, Redis, and GitHub import health.
 - Add file rename/delete workflows and accessible editor interactions.
-- Design AI-assisted edits as reviewable proposals, plus GitHub branch/PR publishing that does not silently rewrite the live workspace.
+- [x] Design AI-assisted edits as reviewable proposals, plus GitHub branch/PR publishing that does not silently rewrite the live workspace.
+
 
 The app interface uses **DM Sans** with **DM Mono** for code-oriented details. GitHub controls README fonts, so the documentation uses clear headings, compact feature panels, and architecture artwork instead of attempting unsupported custom font styling.
 
