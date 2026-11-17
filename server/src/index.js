@@ -37,6 +37,35 @@ import {
   getWorkspaceMember,
   listUserWorkspaces,
 } from './workspaceAccess.js'
+import {
+  createDraftPatch,
+  discardDraftPatch,
+  listUserDrafts,
+  rebaseDraftPatch,
+} from './aiAssistant.js'
+import {
+  createBranch,
+  createCommit,
+  getBranch,
+  getBranchCommits,
+  initWorkspaceBranches,
+  listBranches,
+} from './branchManager.js'
+import {
+  closePullRequest,
+  createPullRequest,
+  getPullRequest,
+  getPullRequestDiff,
+  listPullRequests,
+  mergePullRequest,
+} from './pullRequestManager.js'
+import { applyTreeToLiveDocument, syncBranchToLiveWorkspace } from './workspaceSync.js'
+import {
+  exportBranchAsPatch,
+  exportPullRequestAsPatch,
+  getGitHubWorkflowStatus,
+} from './githubWorkflow.js'
+
 
 const PORT = Number(process.env.PORT ?? 3001)
 const CLIENT_ORIGIN = new URL(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').origin
@@ -374,6 +403,334 @@ app.post('/api/workspaces/:roomId/invites', async (request, response) => {
     response.status(503).json({ error: 'Could not create an invite. Try again.' })
   }
 })
+
+async function checkWorkspaceMember(request, response, roomId, requireEdit = false) {
+  const user = getAuthenticatedUser(request, response, requireEdit)
+  if (!user) return null
+  if (!isValidRoomId(roomId)) {
+    response.status(400).json({ error: 'The workspace ID is invalid.' })
+    return null
+  }
+  const member = await getWorkspaceMember(persistenceClient, roomId, user.id)
+  if (!member) {
+    response.status(403).json({ error: 'You do not have access to this workspace.' })
+    return null
+  }
+  if (requireEdit && member.role !== 'owner' && member.role !== 'editor') {
+    response.status(403).json({ error: 'You do not have edit access to this workspace.' })
+    return null
+  }
+  return { user, member }
+}
+
+// --- AI Assistant Draft Endpoints ---
+app.post('/api/workspaces/:roomId/ai/draft', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+  if (!await enforceRateLimit(response, auth.user.id, 'ai-draft', 30)) return
+
+  try {
+    const { fileId, fileName, baseContent, prompt, actionType, customProposedCode } = request.body || {}
+    const draft = createDraftPatch({
+      roomId,
+      user: auth.user,
+      fileId,
+      fileName,
+      baseContent,
+      prompt,
+      actionType,
+      customProposedCode,
+    })
+    response.status(201).json(draft)
+  } catch (error) {
+    console.error('Could not generate AI draft:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not generate AI draft.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/ai/drafts', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const drafts = listUserDrafts(roomId, auth.user.id)
+    response.json(drafts)
+  } catch (error) {
+    console.error('Could not list drafts:', error)
+    response.status(500).json({ error: 'Could not list drafts.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/ai/rebase', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const { draftId, liveContent } = request.body || {}
+    const rebaseResult = rebaseDraftPatch(draftId, liveContent)
+    response.json(rebaseResult)
+  } catch (error) {
+    console.error('Could not rebase draft:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not rebase draft.' })
+  }
+})
+
+app.delete('/api/workspaces/:roomId/ai/drafts/:draftId', async (request, response) => {
+  const { roomId, draftId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  discardDraftPatch(draftId)
+  response.status(204).end()
+})
+
+// --- Branches & Snapshot Endpoints ---
+app.get('/api/workspaces/:roomId/branches', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    let branches = await listBranches(persistenceClient, roomId)
+    if (branches.length === 0) {
+      await initWorkspaceBranches(persistenceClient, roomId, auth.user)
+      branches = await listBranches(persistenceClient, roomId)
+    }
+    response.json(branches)
+  } catch (error) {
+    console.error('Could not list branches:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not list branches.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/branches', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const { branchName, fromBranch } = request.body || {}
+    const branch = await createBranch(persistenceClient, {
+      roomId,
+      branchName,
+      fromBranch: fromBranch || 'main',
+      user: auth.user,
+    })
+    response.status(201).json(branch)
+  } catch (error) {
+    console.error('Could not create branch:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not create branch.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/branches/:branch/commits', async (request, response) => {
+  const { roomId, branch } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const commits = await getBranchCommits(persistenceClient, roomId, decodeURIComponent(branch))
+    response.json(commits)
+  } catch (error) {
+    console.error('Could not get branch commits:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get branch commits.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/branches/:branch/commits', async (request, response) => {
+  const { roomId, branch } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const { message, tree, expectedParentCommitId } = request.body || {}
+    const commit = await createCommit(persistenceClient, {
+      roomId,
+      branchName: decodeURIComponent(branch),
+      message,
+      author: auth.user,
+      tree,
+      expectedParentCommitId,
+    })
+    response.status(201).json(commit)
+  } catch (error) {
+    console.error('Could not commit to branch:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not commit snapshot.' })
+  }
+})
+
+// --- Pull Request Endpoints ---
+app.get('/api/workspaces/:roomId/pulls', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const prs = await listPullRequests(persistenceClient, roomId, request.query.status || null)
+    response.json(prs)
+  } catch (error) {
+    console.error('Could not list PRs:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not list pull requests.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/pulls', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const { title, description, sourceBranch, targetBranch } = request.body || {}
+    const pr = await createPullRequest(persistenceClient, {
+      roomId,
+      title,
+      description,
+      sourceBranch,
+      targetBranch: targetBranch || 'main',
+      author: auth.user,
+    })
+    response.status(201).json(pr)
+  } catch (error) {
+    console.error('Could not create PR:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not create pull request.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/pulls/:prNumber', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const pr = await getPullRequest(persistenceClient, roomId, Number(prNumber))
+    if (!pr) {
+      response.status(404).json({ error: 'Pull request not found.' })
+      return
+    }
+    response.json(pr)
+  } catch (error) {
+    console.error('Could not get PR:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get pull request.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/pulls/:prNumber/diff', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const diff = await getPullRequestDiff(persistenceClient, roomId, Number(prNumber))
+    response.json(diff)
+  } catch (error) {
+    console.error('Could not get PR diff:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get pull request diff.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/pulls/:prNumber/merge', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const { commitMessage } = request.body || {}
+    const result = await mergePullRequest(persistenceClient, {
+      roomId,
+      prNumber: Number(prNumber),
+      user: auth.user,
+      commitMessage,
+    })
+    response.json(result)
+  } catch (error) {
+    console.error('Could not merge PR:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not merge pull request.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/pulls/:prNumber/close', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const closedPr = await closePullRequest(persistenceClient, {
+      roomId,
+      prNumber: Number(prNumber),
+      user: auth.user,
+    })
+    response.json(closedPr)
+  } catch (error) {
+    console.error('Could not close PR:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not close pull request.' })
+  }
+})
+
+// --- Live Workspace Branch Sync-Back ---
+app.post('/api/workspaces/:roomId/branches/:branch/sync-live', async (request, response) => {
+  const { roomId, branch } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const doc = await getRoomDocument(roomId)
+    const syncStats = await syncBranchToLiveWorkspace(persistenceClient, {
+      roomId,
+      branchName: decodeURIComponent(branch),
+      doc,
+    })
+
+    const update = Y.encodeStateAsUpdate(doc)
+    if (persistenceClient) {
+      await appendRoomUpdate(persistenceClient, roomId, update, REDIS_COMPACTION_THRESHOLD)
+    }
+    io.to(roomId).emit('document:update', update)
+
+    response.json({ ok: true, sync: syncStats })
+  } catch (error) {
+    console.error('Could not sync branch to live workspace:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not sync branch to live workspace.' })
+  }
+})
+
+// --- GitHub Workflow & Patch Export ---
+app.get('/api/workspaces/:roomId/github/status', async (request, response) => {
+  const user = getAuthenticatedUser(request, response)
+  if (!user) return
+  response.json(getGitHubWorkflowStatus(user))
+})
+
+app.post('/api/workspaces/:roomId/branches/:branch/export-patch', async (request, response) => {
+  const { roomId, branch } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const patchResult = await exportBranchAsPatch(persistenceClient, roomId, decodeURIComponent(branch))
+    response.json(patchResult)
+  } catch (error) {
+    console.error('Could not export branch patch:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not export branch patch.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/pulls/:prNumber/export-patch', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const patchResult = await exportPullRequestAsPatch(persistenceClient, roomId, Number(prNumber))
+    response.json(patchResult)
+  } catch (error) {
+    console.error('Could not export PR patch:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not export pull request patch.' })
+  }
+})
+
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok', collaboration: 'yjs' })
 })
