@@ -271,6 +271,7 @@ test('presence includes members connected to different server instances', {
   sockets.push(firstSocket, secondSocket)
   const roomId = `presence-${Date.now()}`
   await joinRoom(firstSocket, roomId, 'Alex')
+  await once(firstSocket, 'presence:update')
   const firstPresenceUpdate = once(firstSocket, 'presence:update')
   const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')
   const [updatedMembers] = await firstPresenceUpdate
