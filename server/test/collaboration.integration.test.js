@@ -161,6 +161,7 @@ test('Redis-backed workspace recovers after restarting the server', {
         ...process.env,
         PORT: String(port),
         REDIS_URL: process.env.REDIS_TEST_URL,
+        REDIS_COMPACTION_THRESHOLD: '1',
       },
       stdio: 'ignore',
     })
@@ -219,8 +220,8 @@ test('Redis-backed workspace recovers after restarting the server', {
     error: 'The document update could not be saved.',
   })
   assert.ok(Date.now() - failedUpdateStart < 4_500)
-  await redisClient.quit()
 
+  await redisClient.ping()
   const recoveredJoin = await joinRoom(joinRetrySocket, retryRoomId, 'Sam')
   assert.equal(recoveredJoin.ok, true)
 
@@ -231,6 +232,18 @@ test('Redis-backed workspace recovers after restarting the server', {
     }, resolve)
   })
   assert.deepEqual(updateResult, { ok: true })
+  firstDoc.getText('code').insert(16, ' and compacted')
+  const concurrentUpdateResult = await new Promise((resolve) => {
+    socket.emit('document:update', {
+      roomId,
+      update: Y.encodeStateAsUpdate(firstDoc),
+    }, resolve)
+  })
+  assert.deepEqual(concurrentUpdateResult, { ok: true })
+  await waitUntilAsync(async () =>
+    await redisClient.xLen(`syncforge:room:${roomId}:updates`) === 0 &&
+    Boolean(await redisClient.get(`syncforge:room:${roomId}:checkpoint`)),
+  )
   firstDoc.destroy()
 
   socket.disconnect()
@@ -242,8 +255,9 @@ test('Redis-backed workspace recovers after restarting the server', {
   const restoredJoin = await joinRoom(socket, roomId, 'Sam')
   const restoredDoc = new Y.Doc()
   Y.applyUpdate(restoredDoc, restoredJoin.state)
-  assert.equal(restoredDoc.getText('code').toString(), 'survives restart')
+  assert.equal(restoredDoc.getText('code').toString(), 'survives restart and compacted')
   restoredDoc.destroy()
+  await redisClient.quit()
 })
 
 test('presence includes members connected to different server instances', {
@@ -306,4 +320,13 @@ async function waitUntil(predicate) {
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
   assert.fail('Clients did not converge before the timeout.')
+}
+
+async function waitUntilAsync(predicate) {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    if (await predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  assert.fail('Asynchronous condition was not met before the timeout.')
 }

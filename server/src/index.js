@@ -5,7 +5,12 @@ import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { Server } from 'socket.io'
 import * as Y from 'yjs'
-import { appendRoomUpdate, restoreRoomDocument, withRedisTimeout } from './redisStore.js'
+import {
+  appendRoomUpdate,
+  compactRoomIfNeeded,
+  restoreRoomDocument,
+  withRedisTimeout,
+} from './redisStore.js'
 import { cleanDisplayName, isValidRoomId } from './validation.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -13,9 +18,11 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
 const REDIS_URL = process.env.REDIS_URL
 const READINESS_TIMEOUT_MS = 1_000
 const ROOM_IDLE_TTL_MS = 60_000
+const REDIS_COMPACTION_THRESHOLD = Number(process.env.REDIS_COMPACTION_THRESHOLD ?? 500)
 const rooms = new Map()
 const localRoomMembers = new Map()
 const roomEvictionTimers = new Map()
+const compactingRooms = new Set()
 const redisConnections = []
 
 const app = express()
@@ -83,6 +90,25 @@ function scheduleRoomEviction(roomId) {
     })
   }, ROOM_IDLE_TTL_MS)
   roomEvictionTimers.set(roomId, timer)
+}
+
+function scheduleRoomCompaction(roomId) {
+  if (!persistenceClient || compactingRooms.has(roomId)) return
+  compactingRooms.add(roomId)
+  compactRoomIfNeeded(persistenceClient, roomId, REDIS_COMPACTION_THRESHOLD)
+    .catch((error) => console.error(`Could not compact room ${roomId}:`, error))
+    .finally(async () => {
+      compactingRooms.delete(roomId)
+      try {
+        const streamLength = await withRedisTimeout(
+          persistenceClient.xLen(`syncforge:room:${roomId}:updates`),
+          'Redis update count timed out',
+        )
+        if (streamLength >= REDIS_COMPACTION_THRESHOLD) scheduleRoomCompaction(roomId)
+      } catch (error) {
+        console.error(`Could not check compaction status for room ${roomId}:`, error)
+      }
+    })
 }
 
 async function getRoomDocument(roomId) {
@@ -188,6 +214,7 @@ io.on('connection', (socket) => {
 
     let doc
     let retryable = Boolean(persistenceClient)
+    let shouldCompact = false
     try {
       doc = await getRoomDocument(roomId)
       retryable = false
@@ -199,7 +226,12 @@ io.on('connection', (socket) => {
       }
       if (persistenceClient) {
         retryable = true
-        await appendRoomUpdate(persistenceClient, roomId, update)
+        shouldCompact = await appendRoomUpdate(
+          persistenceClient,
+          roomId,
+          update,
+          REDIS_COMPACTION_THRESHOLD,
+        )
         retryable = false
       }
       Y.applyUpdate(doc, update)
@@ -214,6 +246,8 @@ io.on('connection', (socket) => {
       })
       return
     }
+
+    if (shouldCompact) scheduleRoomCompaction(roomId)
 
     if (updatePublisher) {
       try {
@@ -244,6 +278,9 @@ io.on('connection', (socket) => {
 async function start() {
   if (process.env.NODE_ENV === 'production' && !REDIS_URL) {
     throw new Error('REDIS_URL is required in production for durable workspace storage.')
+  }
+  if (REDIS_URL && (!Number.isSafeInteger(REDIS_COMPACTION_THRESHOLD) || REDIS_COMPACTION_THRESHOLD < 1)) {
+    throw new Error('REDIS_COMPACTION_THRESHOLD must be a positive safe integer.')
   }
 
   if (REDIS_URL) {
