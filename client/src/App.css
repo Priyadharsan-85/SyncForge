@@ -1740,4 +1740,515 @@
   to { transform: rotate(360deg); }
 }
 
+/* Branch & Pull Request Modal Styles */
+.branch-modal-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(840px, 94vw);
+  max-height: 88vh;
+  border: 1px solid #373844;
+  border-radius: 8px;
+  background: #191a21;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.branch-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid #282933;
+}
+
+.branch-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.branch-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9293a0;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.branch-tab-btn:hover {
+  background: #242530;
+  color: #fff;
+}
+
+.branch-tab-btn.active {
+  background: #242530;
+  border-color: #383948;
+  color: #fff;
+  font-weight: 500;
+}
+
+.branch-notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: #182c20;
+  border-bottom: 1px solid #264b34;
+  color: #85e89d;
+  font-size: 11px;
+}
+
+.branch-error-bar {
+  margin: 0 !important;
+  padding: 8px 18px !important;
+  border-radius: 0 !important;
+}
+
+.branch-modal-body {
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-branch-row {
+  margin-bottom: 14px;
+}
+
+.create-branch-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.create-branch-form input {
+  flex: 1;
+  min-width: 220px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #333440;
+  background: #14151b;
+  color: #fff;
+  font-size: 12px;
+}
+
+.create-branch-form select,
+.commit-form select,
+.pr-branch-selectors select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #333440;
+  background: #14151b;
+  color: #fff;
+  font-size: 12px;
+}
+
+.branches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.branch-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid #292a34;
+  background: #1b1c24;
+}
+
+.branch-item-row.current-active {
+  border-color: #3d4a63;
+  background: #1c212e;
+}
+
+.branch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.branch-name-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.branch-current-pill {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #234575;
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.branch-info small {
+  color: #7b7c88;
+  font-size: 11px;
+}
+
+.branch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtle-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid #333440;
+  background: transparent;
+  color: #b5b6c2;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.subtle-button:hover {
+  background: #272834;
+  color: #fff;
+}
+
+.sync-live-button {
+  color: #60a5fa !important;
+  border-color: #2b3a55 !important;
+}
+
+.sync-live-button:hover {
+  background: #1e293b !important;
+}
+
+.commit-guidelines {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #4a3e2a;
+  background: #241f17;
+  color: #ffd8a8;
+  font-size: 11px;
+  line-height: 17px;
+  margin-bottom: 16px;
+}
+
+.commit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.commit-form label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: #8c8d99;
+}
+
+.commit-form textarea,
+.create-pr-card textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #333440;
+  background: #14151b;
+  color: #e2e3ea;
+  font-family: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.commit-meta-summary {
+  font-size: 11px;
+  color: #9ea0ad;
+  padding: 6px 0;
+}
+
+.pulls-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pulls-heading-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.create-pr-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid #363744;
+  background: #1d1e26;
+  margin-bottom: 16px;
+}
+
+.create-pr-card h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #fff;
+}
+
+.pr-branch-selectors {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pr-branch-selectors > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pr-branch-selectors label,
+.create-pr-card label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: #8c8d99;
+}
+
+.pr-arrow-icon {
+  margin-top: 14px;
+  color: #8c8d99;
+}
+
+.create-pr-card input {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #333440;
+  background: #14151b;
+  color: #fff;
+  font-size: 12px;
+}
+
+.pulls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pr-list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid #292a34;
+  background: #1b1c24;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pr-list-card:hover {
+  background: #22232e;
+  border-color: #3b3c4c;
+}
+
+.pr-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pr-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.pr-status-badge.open {
+  background: rgba(46, 160, 67, 0.2);
+  color: #7ee787;
+  border: 1px solid #2ea043;
+}
+
+.pr-status-badge.merged {
+  background: rgba(167, 139, 250, 0.2);
+  color: #c4b5fd;
+  border: 1px solid #8b5cf6;
+}
+
+.pr-status-badge.closed {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ffa198;
+  border: 1px solid #da3633;
+}
+
+.pr-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pr-card-text b {
+  font-size: 13px;
+  color: #fff;
+}
+
+.pr-card-text small {
+  color: #7b7c88;
+  font-size: 11px;
+}
+
+.subtle-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #93c5fd;
+}
+
+.empty-pulls {
+  padding: 30px;
+  text-align: center;
+  color: #727380;
+  font-size: 12px;
+}
+
+.pr-detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pr-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pr-detail-title-group h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #fff;
+}
+
+.pr-branch-flow {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #a78bfa;
+}
+
+.pr-conflict-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #381a1a;
+  border: 1px solid #753131;
+  color: #ffb4b4;
+  font-size: 12px;
+}
+
+.pr-diff-wrapper {
+  max-height: 48vh;
+  overflow-y: auto;
+}
+
+.pr-detail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid #282933;
+}
+
+.pr-merged-indicator {
+  color: #a78bfa;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.github-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.github-status-card {
+  padding: 18px;
+  border-radius: 6px;
+  border: 1px solid #3a3227;
+  background: #1c1a17;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.github-status-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.gh-icon-warn {
+  color: #f59e0b;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.github-status-header h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: #ffd8a8;
+}
+
+.github-status-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #c9baa8;
+  line-height: 18px;
+}
+
+.github-guidelines-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #141311;
+  border: 1px solid #2a251e;
+  font-size: 11px;
+  color: #a89c8d;
+  line-height: 17px;
+}
+
+.github-guidelines-box code {
+  background: #252320;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #f0e6da;
+}
+
+
 
