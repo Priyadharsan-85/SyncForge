@@ -26,6 +26,7 @@ import {
   withRedisTimeout,
 } from './redisStore.js'
 import { createImportedDocument, validateImportedFiles } from './projectImport.js'
+import { consumeRateLimit } from './rateLimit.js'
 import { cleanDisplayName, isValidRoomId } from './validation.js'
 import {
   createWorkspace,
@@ -89,6 +90,25 @@ function getAuthenticatedUser(request, response, requireSameOrigin = false) {
     return null
   }
   return user
+}
+
+async function enforceRateLimit(response, userId, scope, limit) {
+  try {
+    const result = await consumeRateLimit(persistenceClient, {
+      scope,
+      actor: String(userId),
+      limit,
+      windowSeconds: 60 * 60,
+    })
+    if (result.allowed) return true
+    response.set('Retry-After', String(result.retryAfterSeconds))
+    response.status(429).json({ error: "You have reached this action's hourly limit. Try again later." })
+    return false
+  } catch (error) {
+    console.error(`Could not check the ${scope} rate limit:`, error)
+    response.status(503).json({ error: 'This action is temporarily unavailable. Try again shortly.' })
+    return false
+  }
 }
 
 function workspaceName(value, fallback) {
@@ -266,6 +286,7 @@ app.get('/api/workspaces', async (request, response) => {
 app.post('/api/workspaces', async (request, response) => {
   const user = getAuthenticatedUser(request, response, true)
   if (!user) return
+  if (!await enforceRateLimit(response, user.id, 'workspace-create', 15)) return
   try {
     const workspace = await createWorkspaceRecord({
       owner: user,
@@ -281,6 +302,7 @@ app.post('/api/workspaces', async (request, response) => {
 app.post('/api/workspaces/import/local', async (request, response) => {
   const user = getAuthenticatedUser(request, response, true)
   if (!user) return
+  if (!await enforceRateLimit(response, user.id, 'project-import', 5)) return
   try {
     const files = validateImportedFiles(request.body?.files)
     const workspace = await createWorkspaceRecord({
@@ -301,6 +323,7 @@ app.post('/api/workspaces/import/local', async (request, response) => {
 app.post('/api/workspaces/import/github', async (request, response) => {
   const user = getAuthenticatedUser(request, response, true)
   if (!user) return
+  if (!await enforceRateLimit(response, user.id, 'project-import', 5)) return
   try {
     const imported = await importPublicGitHubRepository(request.body?.url)
     const workspace = await createWorkspaceRecord({
@@ -322,6 +345,7 @@ app.post('/api/workspaces/import/github', async (request, response) => {
 app.post('/api/workspaces/:roomId/invites', async (request, response) => {
   const user = getAuthenticatedUser(request, response, true)
   if (!user) return
+  if (!await enforceRateLimit(response, user.id, 'invite-create', 20)) return
   const { roomId } = request.params
   if (!isValidRoomId(roomId)) {
     response.status(400).json({ error: 'The workspace ID is invalid.' })

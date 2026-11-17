@@ -49,6 +49,8 @@ The app is available at `http://localhost:5173`. To stop it, press `Ctrl+C` and 
 
 The server validates OAuth state on the GitHub callback, creates a seven-day HMAC-signed session cookie (`HttpOnly`, `SameSite=Lax`, and `Secure` in production), and derives each participant's display name from the authenticated GitHub profile. Keep the frontend and API on one origin (or behind a same-origin reverse proxy) so the browser sends the session cookie to both REST and Socket.IO endpoints. Production startup fails without Redis, GitHub OAuth credentials, and a `SESSION_SECRET` of at least 32 characters.
 
+Workspace creation is limited to 15 actions per user per hour, project imports (local and GitHub combined) to 5 per hour, and invite creation to 20 per hour. Limits are keyed by authenticated GitHub user ID and shared through Redis across server instances. A `429` response includes `Retry-After`; if Redis cannot check a production limit, the action fails with `503` rather than bypassing the limit. Without Redis in local development, limits are process-local.
+
 The repeatable Socket.IO load test defaults to 100 clients and a unique throwaway room. Run it only against a local or staging deployment with disposable Redis data; it writes test edits to that room. Sign in with a dedicated test account, then pass the session cookie without saving it in the repository:
 
 ```powershell

@@ -294,6 +294,35 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   Y.applyUpdate(importedDoc, importedJoin.state)
   const importedFile = importedDoc.getMap('files').get('src/index.ts')
   assert.equal(importedFile.get('content').toString(), 'export const imported = true')
+
+  for (let index = 0; index < 4; index += 1) {
+    const response = await fetch(`${url}/api/workspaces/import/local`, {
+      method: 'POST',
+      headers: {
+        Origin: clientOrigin,
+        Cookie: sessionCookie('Alex'),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: `Rate limit test ${index}`,
+        files: [{ path: 'index.js', content: 'export {}' }],
+      }),
+    })
+    assert.equal(response.status, 201)
+  }
+  const rateLimitedImport = await fetch(`${url}/api/workspaces/import/local`, {
+    method: 'POST',
+    headers: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie('Alex'),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      files: [{ path: 'index.js', content: 'export {}' }],
+    }),
+  })
+  assert.equal(rateLimitedImport.status, 429)
+  assert.match(rateLimitedImport.headers.get('retry-after'), /^\d+$/)
 })
 
 test('production server refuses to start without Redis persistence', async () => {
