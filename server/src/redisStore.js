@@ -34,6 +34,14 @@ redis.call('XTRIM', KEYS[3], 'MINID', ARGV[2])
 redis.call('XDEL', KEYS[3], ARGV[2])
 return 1
 `
+const INITIALIZE_ROOM_SCRIPT = `
+if redis.call('EXISTS', KEYS[1]) ~= 0 or redis.call('EXISTS', KEYS[2]) ~= 0 or redis.call('XLEN', KEYS[3]) ~= 0 then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1])
+redis.call('SET', KEYS[2], '0-0')
+return 1
+`
 
 export async function withRedisTimeout(operation, message) {
   let timeout
@@ -104,6 +112,25 @@ async function readRoomState(client, roomId) {
 export async function restoreRoomDocument(client, roomId) {
   const { doc } = await readRoomState(client, roomId)
   return doc
+}
+
+export async function storeInitialRoomDocument(client, roomId, doc) {
+  const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64')
+  const stored = await withRedisTimeout(
+    client.eval(INITIALIZE_ROOM_SCRIPT, {
+      keys: [snapshotKey(roomId), checkpointKey(roomId), updatesKey(roomId)],
+      arguments: [snapshot],
+    }),
+    'Initial workspace persistence timed out',
+  )
+  if (Number(stored) !== 1) throw new Error(`Workspace document already exists for ${roomId}`)
+}
+
+export async function deleteRoomDocument(client, roomId) {
+  await withRedisTimeout(
+    client.del([snapshotKey(roomId), checkpointKey(roomId), updatesKey(roomId)]),
+    'Workspace document cleanup timed out',
+  )
 }
 
 export async function appendRoomUpdate(client, roomId, update, compactionThreshold) {

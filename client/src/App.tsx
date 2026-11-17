@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { io } from 'socket.io-client'
@@ -23,15 +23,30 @@ import {
 } from 'lucide-react'
 import './App.css'
 import { bindYTextToMonaco } from './editorBinding'
+import {
+  readProjectFolder,
+  readProjectZip,
+  type ProjectFileReadResult,
+} from './projectFiles'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
+type Workspace = {
+  roomId: string
+  name: string
+  ownerId: string
+  source: { type: string; repository?: string }
+  role: 'owner' | 'editor'
+  createdAt: string
+}
 type WorkspaceFile = { id: string; name: string; content: Y.Text }
 type ConnectionState = 'connecting' | 'connected' | 'offline'
 type JoinResponse = {
   ok: boolean
   retryable?: boolean
   state?: Uint8Array
+  stateVector?: Uint8Array
+  role?: Workspace['role']
   members?: Member[]
   error?: string
 }
@@ -52,11 +67,8 @@ console.log(greet('world'))
 `
 
 const roomFromUrl = new URLSearchParams(window.location.search).get('room')
+const inviteFromUrl = new URLSearchParams(window.location.search).get('invite')
 const authResult = new URLSearchParams(window.location.search).get('auth')
-
-function createRoomId() {
-  return crypto.randomUUID().slice(0, 8)
-}
 
 function initials(name: string) {
   return name
@@ -98,12 +110,17 @@ function languageForFile(name: string) {
   return 'javascript'
 }
 
+function equalBytes(left: Uint8Array, right: Uint8Array) {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [authError, setAuthError] = useState('')
-  const [roomInput, setRoomInput] = useState(roomFromUrl ?? '')
   const [roomId, setRoomId] = useState(roomFromUrl ?? '')
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceRole, setWorkspaceRole] = useState<Workspace['role'] | ''>('')
   const [members, setMembers] = useState<Member[]>([])
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([])
   const [activeFileId, setActiveFileId] = useState('')
@@ -117,6 +134,9 @@ function App() {
         : '',
   )
   const [copied, setCopied] = useState(false)
+  const [isWorking, setIsWorking] = useState(false)
+  const [githubUrl, setGithubUrl] = useState('')
+  const [workspaceNotice, setWorkspaceNotice] = useState('')
   const [showNewFile, setShowNewFile] = useState(false)
   const [newFileName, setNewFileName] = useState('')
   const [fileNameError, setFileNameError] = useState('')
@@ -124,6 +144,9 @@ function App() {
   const filesRef = useRef<Y.Map<Y.Map<unknown>> | null>(null)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const bindingRef = useRef<(() => void) | null>(null)
+  const inviteTokenRef = useRef(inviteFromUrl ?? '')
+  const folderInputRef = useRef<HTMLInputElement | null>(null)
+  const zipInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let active = true
@@ -146,6 +169,23 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (!user || roomId) return
+    let active = true
+    fetch('/api/workspaces', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load your workspaces.')
+        return response.json() as Promise<Workspace[]>
+      })
+      .then((nextWorkspaces) => {
+        if (active) setWorkspaces(nextWorkspaces)
+      })
+      .catch(() => {
+        if (active) setError('Could not load your workspaces. Check your connection and retry.')
+      })
+    return () => { active = false }
+  }, [roomId, user])
+
+  useEffect(() => {
     if (!roomId || !user) return
 
     const doc = new Y.Doc()
@@ -159,6 +199,7 @@ function App() {
     let joinRetryDelay = 500
     let joinRetryTimer: number | undefined
     let documentRevision = 0
+    let serverStateVector: Uint8Array | undefined
     let retryDelay = 500
     let retryPending = false
     let retryInFlight = false
@@ -244,11 +285,15 @@ function App() {
 
     function sendDocument(isRecovery = retryPending) {
       if (joined && socket.connected) {
+        const currentStateVector = Y.encodeStateVector(doc)
+        if (serverStateVector && equalBytes(currentStateVector, serverStateVector)) return
         const sentRevision = documentRevision
         if (isRecovery) retryInFlight = true
         socket.emit('document:update', {
           roomId,
-          update: Y.encodeStateAsUpdate(doc),
+          update: serverStateVector
+            ? Y.encodeStateAsUpdate(doc, serverStateVector)
+            : Y.encodeStateAsUpdate(doc),
         }, (response: UpdateResponse) =>
           handleUpdateAcknowledgement(response, isRecovery, sentRevision))
       }
@@ -265,7 +310,10 @@ function App() {
 
     function joinRoom() {
       if (!socket.connected) return
-      socket.emit('room:join', { roomId }, (response: JoinResponse) => {
+      socket.emit('room:join', {
+        roomId,
+        inviteToken: inviteTokenRef.current || undefined,
+      }, (response: JoinResponse) => {
         if (!response.ok || !response.state) {
           setError(response.error ?? 'Could not join this room.')
           setConnection('offline')
@@ -287,7 +335,13 @@ function App() {
           setError('')
         }
         Y.applyUpdate(doc, response.state, socket)
+        serverStateVector = response.stateVector
         joined = true
+        setWorkspaceRole(response.role ?? '')
+        if (inviteTokenRef.current) {
+          inviteTokenRef.current = ''
+          window.history.replaceState(null, '', `?room=${encodeURIComponent(roomId)}`)
+        }
         ensureInitialFile()
         setConnection('connected')
         setMembers(response.members ?? [])
@@ -379,26 +433,119 @@ function App() {
     bindingRef.current = bindYTextToMonaco(text, editor)
   }
 
-  function enterRoom(id: string) {
-    const cleanRoom = id.trim()
-    if (!/^[a-zA-Z0-9_-]{3,48}$/.test(cleanRoom)) {
-      setError('Room IDs must be 3–48 letters, numbers, dashes or underscores.')
-      return
-    }
-    if (!user) {
-      const returnTo = `${window.location.pathname}?room=${encodeURIComponent(cleanRoom)}`
-      window.location.assign(`/auth/github?returnTo=${encodeURIComponent(returnTo)}`)
-      return
-    }
+  function openWorkspace(id: string, inviteToken = '') {
+    inviteTokenRef.current = inviteToken
     setLocalReady(false)
     setConnection('connecting')
     setError('')
-    setRoomInput(cleanRoom)
+    setWorkspaceRole('')
     setWorkspaceFiles([])
     setActiveFileId('')
-    setRoomId(cleanRoom)
+    setRoomId(id)
+    const query = new URLSearchParams({ room: id })
+    if (inviteToken) query.set('invite', inviteToken)
+    window.history.replaceState(null, '', `${window.location.pathname}?${query}`)
+  }
+
+  function beginSignIn() {
+    const returnUrl = new URL(window.location.href)
+    returnUrl.searchParams.delete('auth')
+    const returnTo = `${returnUrl.pathname}${returnUrl.search}`
+    window.location.assign(`/auth/github?returnTo=${encodeURIComponent(returnTo)}`)
+  }
+
+  async function postJson<T>(url: string, body: unknown): Promise<T> {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const result = await response.json() as { error?: string } & T
+    if (!response.ok) throw new Error(result.error ?? 'The request could not be completed.')
+    return result
+  }
+
+  async function createBlankWorkspace() {
+    setIsWorking(true)
     setError('')
-    window.history.replaceState(null, '', `?room=${encodeURIComponent(cleanRoom)}`)
+    try {
+      const workspace = await postJson<Workspace>('/api/workspaces', { name: 'Untitled workspace' })
+      setWorkspaceNotice('')
+      openWorkspace(workspace.roomId)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not create the workspace.')
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+  async function createLocalWorkspace(result: ProjectFileReadResult) {
+    setIsWorking(true)
+    setError('')
+    try {
+      const workspace = await postJson<Workspace>('/api/workspaces/import/local', {
+        name: 'Imported project',
+        files: result.files,
+      })
+      setWorkspaceNotice(
+        `Imported ${result.files.length} text files${result.skipped ? `; skipped ${result.skipped} unsupported or oversized files` : ''}.`,
+      )
+      openWorkspace(workspace.roomId)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not import that project.')
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+  async function handleFolderChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const selectedFiles = Array.from(input.files ?? [])
+    input.value = ''
+    if (selectedFiles.length === 0) return
+    setIsWorking(true)
+    setError('')
+    try {
+      const result = await readProjectFolder(selectedFiles)
+      setIsWorking(false)
+      await createLocalWorkspace(result)
+    } catch (readError) {
+      setError(readError instanceof Error ? readError.message : 'Could not read that folder.')
+      setIsWorking(false)
+    }
+  }
+
+  async function handleZipChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const selectedFile = input.files?.[0]
+    input.value = ''
+    if (!selectedFile) return
+    setIsWorking(true)
+    setError('')
+    try {
+      const result = await readProjectZip(selectedFile)
+      setIsWorking(false)
+      await createLocalWorkspace(result)
+    } catch (readError) {
+      setError(readError instanceof Error ? readError.message : 'Could not read that ZIP file.')
+      setIsWorking(false)
+    }
+  }
+
+  async function importGitHubRepository(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsWorking(true)
+    setError('')
+    try {
+      const workspace = await postJson<Workspace>('/api/workspaces/import/github', { url: githubUrl })
+      setWorkspaceNotice('Imported the public repository. Existing GitHub contributors can open it from their workspace list.')
+      setGithubUrl('')
+      openWorkspace(workspace.roomId)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not import that repository.')
+    } finally {
+      setIsWorking(false)
+    }
   }
 
   async function signOut() {
@@ -414,6 +561,7 @@ function App() {
   function leaveRoom() {
     setLocalReady(false)
     setRoomId('')
+    setWorkspaceRole('')
     setMembers([])
     setWorkspaceFiles([])
     setActiveFileId('')
@@ -454,13 +602,15 @@ function App() {
 
   async function copyInvite() {
     try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomId)}`,
+      const { inviteUrl } = await postJson<{ inviteUrl: string }>(
+        `/api/workspaces/${roomId}/invites`,
+        {},
       )
+      await navigator.clipboard.writeText(inviteUrl)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1800)
     } catch {
-      setError('Could not copy the invite link. You can copy the room ID instead.')
+      setError('Could not create or copy an invite link. Try again.')
     }
   }
 
@@ -493,43 +643,99 @@ function App() {
             A calm, real-time code space for thinking out loud, making changes, and building as a team.
           </p>
 
-          <form
-            className="join-card"
-            onSubmit={(event) => {
-              event.preventDefault()
-              enterRoom(roomInput || createRoomId())
-            }}
-          >
-            {user ? (
-              <div className="signed-in-user">
-                <span className="profile-avatar">{initials(user.name) || 'Y'}</span>
-                <span>Signed in as <b>{user.name}</b> <small>@{user.login}</small></span>
+          {user ? (
+            <section className="workspace-home">
+              <div className="home-actions">
+                <button className="primary-button" onClick={createBlankWorkspace} disabled={isWorking}>
+                  <Plus size={16} /> Create workspace
+                </button>
+                <button className="secondary-button" onClick={() => folderInputRef.current?.click()} disabled={isWorking}>
+                  <FileCode2 size={16} /> Import folder
+                </button>
+                <button className="secondary-button" onClick={() => zipInputRef.current?.click()} disabled={isWorking}>
+                  <ArrowUpRight size={16} /> Import ZIP
+                </button>
               </div>
-            ) : (
-              <p className="sign-in-prompt">Sign in with GitHub to create or join a shared workspace.</p>
-            )}
-            <div className="room-input-label">
-              <label htmlFor="room-id">ROOM CODE</label>
-              <span>Have an invite? Enter its code</span>
+              <input
+                ref={(input) => {
+                  folderInputRef.current = input
+                  input?.setAttribute('webkitdirectory', '')
+                }}
+                className="hidden-input"
+                type="file"
+                multiple
+                onChange={handleFolderChange}
+                aria-label="Choose a project folder"
+              />
+              <input
+                ref={zipInputRef}
+                className="hidden-input"
+                type="file"
+                accept=".zip,application/zip"
+                onChange={handleZipChange}
+                aria-label="Choose a project ZIP file"
+              />
+              <form className="github-import" onSubmit={importGitHubRepository}>
+                <label htmlFor="github-repository">IMPORT A PUBLIC GITHUB REPOSITORY</label>
+                <div className="github-import-row">
+                  <input
+                    id="github-repository"
+                    type="url"
+                    placeholder="https://github.com/owner/repository"
+                    value={githubUrl}
+                    onChange={(event) => setGithubUrl(event.target.value)}
+                    disabled={isWorking}
+                    required
+                  />
+                  <button className="secondary-button" type="submit" disabled={isWorking}>
+                    Import
+                  </button>
+                </div>
+                <small>Existing repository contributors get editor access automatically.</small>
+              </form>
+              {isWorking && <p className="home-status" role="status">Preparing your workspace…</p>}
+              {error && <p className="form-error" role="alert">{error}</p>}
+              <div className="workspace-list">
+                <div className="workspace-list-heading">
+                  <h2>Your workspaces</h2>
+                  <span>{workspaces.length}</span>
+                </div>
+                {workspaces.length === 0 ? (
+                  <p className="empty-workspaces">Create or import a project to get started. Invited workspaces will appear here.</p>
+                ) : workspaces.map((workspace) => (
+                  <button
+                    className="workspace-card"
+                    key={workspace.roomId}
+                    onClick={() => openWorkspace(workspace.roomId)}
+                  >
+                    <span className="workspace-card-icon"><Code2 size={17} /></span>
+                    <span className="workspace-card-copy">
+                      <b>{workspace.name}</b>
+                      <small>
+                        {workspace.source.type === 'github'
+                          ? `GitHub · ${workspace.source.repository}`
+                          : workspace.source.type === 'local' ? 'Imported from this device' : 'SyncForge workspace'}
+                      </small>
+                    </span>
+                    <span className="workspace-role">{workspace.role}</span>
+                    <ArrowUpRight size={15} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="join-card">
+              <p className="sign-in-prompt">Sign in with GitHub to open an invite, create a workspace, or import a project.</p>
+              <button className="primary-button" onClick={beginSignIn}>
+                Continue with GitHub <ArrowUpRight size={17} />
+              </button>
+              {authError && <p className="form-error" role="alert">{authError} <button type="button" className="inline-retry" onClick={() => window.location.reload()}>Retry</button></p>}
+              {error && <p className="form-error" role="alert">{error}</p>}
+              <div className="join-footnote">
+                <Wifi size={14} /> Invite links securely connect teammates to a workspace.
+              </div>
             </div>
-            <input
-              id="room-id"
-              autoComplete="off"
-              maxLength={48}
-              placeholder="e.g. team-project"
-              value={roomInput}
-              onChange={(event) => setRoomInput(event.target.value)}
-            />
-            <button className="primary-button" type="submit">
-              {user ? roomInput ? 'Join workspace' : 'Create a workspace' : 'Continue with GitHub'}
-              <ArrowUpRight size={17} />
-            </button>
-            {authError && <p className="form-error" role="alert">{authError} <button type="button" className="inline-retry" onClick={() => window.location.reload()}>Retry</button></p>}
-            {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="join-footnote">
-              <Wifi size={14} /> Changes sync live. Your work is saved on this device.
-            </div>
-          </form>
+          )}
 
           <div className="value-points">
             <div><span className="point-icon"><Radio size={16} /></span><span><b>Live by default</b><small>See every change as it happens</small></span></div>
@@ -572,10 +778,12 @@ function App() {
           {members.length > 3 && <span className="member-overflow">+{members.length - 3}</span>}
           <span className="member-count"><Users size={14} /> {members.length}</span>
         </div>
-        <button className="share-button" onClick={copyInvite}>
-          {copied ? <Check size={15} /> : <Copy size={15} />}
-          {copied ? 'Copied' : 'Invite'}
-        </button>
+        {workspaceRole === 'owner' && (
+          <button className="share-button" onClick={copyInvite}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            {copied ? 'Copied' : 'Invite'}
+          </button>
+        )}
         <button className="icon-button" onClick={signOut} aria-label="Sign out of GitHub" title="Sign out">
           <LogOut size={16} />
         </button>
@@ -662,7 +870,15 @@ function App() {
               }}
             />
           </div>
-          {error && <div className="workspace-alert" role="status">{error}</div>}
+          {error && (
+            <div className="workspace-alert" role="status">
+              {error}
+              {connection === 'offline' && (
+                <button onClick={leaveRoom}>Back to workspaces</button>
+              )}
+            </div>
+          )}
+          {workspaceNotice && <div className="workspace-alert" role="status">{workspaceNotice}</div>}
           <footer className="editor-status">
             <span><span className={`status-dot ${connection}`} />{connection === 'connected' ? 'All changes synced' : 'Editing locally'}</span>
             <span>UTF-8</span>
@@ -679,9 +895,17 @@ function App() {
           </div>
           <div className="activity-separator" />
           <div className="room-details">
-            <div className="detail-label">ROOM LINK</div>
-            <button className="room-link" onClick={copyInvite}><span>{roomId}</span>{copied ? <Check size={14} /> : <Copy size={14} />}</button>
-            <p>Share this room code with a teammate to start building together.</p>
+            <div className="detail-label">{workspaceRole === 'owner' ? 'INVITE LINK' : 'WORKSPACE ACCESS'}</div>
+            {workspaceRole === 'owner' ? (
+              <>
+                <button className="room-link" onClick={copyInvite}>
+                  <span>{roomId}</span>{copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+                <p>Invite links grant editor access and expire after seven days.</p>
+              </>
+            ) : (
+              <p>You have editor access to this workspace.</p>
+            )}
           </div>
           <div className="activity-tip">
             <div className="tip-icon"><Radio size={15} /></div>

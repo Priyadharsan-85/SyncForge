@@ -1,11 +1,12 @@
 import cors from 'cors'
 import express from 'express'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { Server } from 'socket.io'
 import * as Y from 'yjs'
+import { GitHubImportError, importPublicGitHubRepository } from './githubImport.js'
 import {
   createSessionToken,
   matchesSecret,
@@ -19,10 +20,22 @@ import {
 import {
   appendRoomUpdate,
   compactRoomIfNeeded,
+  deleteRoomDocument,
   restoreRoomDocument,
+  storeInitialRoomDocument,
   withRedisTimeout,
 } from './redisStore.js'
+import { createImportedDocument, validateImportedFiles } from './projectImport.js'
 import { cleanDisplayName, isValidRoomId } from './validation.js'
+import {
+  createWorkspace,
+  createWorkspaceInvite,
+  deleteWorkspace,
+  getWorkspace,
+  getWorkspaceAccess,
+  getWorkspaceMember,
+  listUserWorkspaces,
+} from './workspaceAccess.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
 const CLIENT_ORIGIN = new URL(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').origin
@@ -34,6 +47,7 @@ const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL ??
   new URL('/auth/github/callback', CLIENT_ORIGIN).toString()
 const READINESS_TIMEOUT_MS = 1_000
 const ROOM_IDLE_TTL_MS = 60_000
+const MAX_DOCUMENT_UPDATE_BYTES = 8 * 1024 * 1024
 const REDIS_COMPACTION_THRESHOLD = Number(process.env.REDIS_COMPACTION_THRESHOLD ?? 500)
 const rooms = new Map()
 const localRoomMembers = new Map()
@@ -61,8 +75,70 @@ function authFailureUrl(returnPath, reason = 'failed') {
   return url.toString()
 }
 
+function getAuthenticatedUser(request, response, requireSameOrigin = false) {
+  if (requireSameOrigin && request.get('origin') !== CLIENT_ORIGIN) {
+    response.status(403).json({ error: 'Invalid request origin.' })
+    return null
+  }
+  const user = verifySessionToken(
+    readCookie(request.headers.cookie, SESSION_COOKIE_NAME),
+    SESSION_SECRET,
+  )
+  if (!user) {
+    response.status(401).json({ error: 'Authentication required.' })
+    return null
+  }
+  return user
+}
+
+function workspaceName(value, fallback) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, 80)
+    : fallback
+}
+
+async function createWorkspaceRecord({ owner, name, source, contributors = [], files }) {
+  const roomId = randomUUID().replace(/-/g, '')
+  const doc = files ? createImportedDocument(files) : null
+  let documentStored = false
+  let workspaceStored = false
+  try {
+    if (doc && persistenceClient) {
+      await storeInitialRoomDocument(persistenceClient, roomId, doc)
+      documentStored = true
+    }
+    const workspace = await createWorkspace(persistenceClient, {
+      roomId,
+      owner,
+      name,
+      source,
+      contributors,
+    })
+    workspaceStored = true
+    if (doc) {
+      rooms.set(roomId, Promise.resolve(doc))
+      documentStored = true
+    }
+    return workspace
+  } catch (error) {
+    if (workspaceStored) {
+      await deleteWorkspace(persistenceClient, roomId).catch((cleanupError) => {
+        console.error(`Could not clean up workspace ${roomId}:`, cleanupError)
+      })
+    }
+    if (documentStored && persistenceClient) {
+      await deleteRoomDocument(persistenceClient, roomId).catch((cleanupError) => {
+        console.error(`Could not clean up document ${roomId}:`, cleanupError)
+      })
+    }
+    if (doc && !rooms.has(roomId)) doc.destroy()
+    throw error
+  }
+}
+
 const app = express()
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
+app.use(express.json({ limit: '13mb' }))
 app.get('/auth/me', (request, response) => {
   const session = verifySessionToken(
     readCookie(request.headers.cookie, SESSION_COOKIE_NAME),
@@ -177,6 +253,103 @@ app.post('/auth/logout', (request, response) => {
   response.append('Set-Cookie', createCookie(SESSION_COOKIE_NAME, '', 0))
   response.status(204).end()
 })
+app.get('/api/workspaces', async (request, response) => {
+  const user = getAuthenticatedUser(request, response)
+  if (!user) return
+  try {
+    response.json(await listUserWorkspaces(persistenceClient, user.id))
+  } catch (error) {
+    console.error('Could not list workspaces:', error)
+    response.status(503).json({ error: 'Could not load your workspaces. Try again.' })
+  }
+})
+app.post('/api/workspaces', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  try {
+    const workspace = await createWorkspaceRecord({
+      owner: user,
+      name: workspaceName(request.body?.name, 'Untitled workspace'),
+      source: { type: 'blank' },
+    })
+    response.status(201).json(workspace)
+  } catch (error) {
+    console.error('Could not create workspace:', error)
+    response.status(503).json({ error: 'Could not create the workspace. Try again.' })
+  }
+})
+app.post('/api/workspaces/import/local', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  try {
+    const files = validateImportedFiles(request.body?.files)
+    const workspace = await createWorkspaceRecord({
+      owner: user,
+      name: workspaceName(request.body?.name, 'Imported project'),
+      source: { type: 'local' },
+      files,
+    })
+    response.status(201).json(workspace)
+  } catch (error) {
+    console.error('Could not import local project:', error)
+    const status = Number.isInteger(error.status) ? error.status : 503
+    response.status(status).json({
+      error: status < 500 ? error.message : 'Could not import the project. Try again.',
+    })
+  }
+})
+app.post('/api/workspaces/import/github', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  try {
+    const imported = await importPublicGitHubRepository(request.body?.url)
+    const workspace = await createWorkspaceRecord({
+      owner: user,
+      name: imported.name,
+      source: imported.source,
+      contributors: imported.contributors,
+      files: imported.files,
+    })
+    response.status(201).json(workspace)
+  } catch (error) {
+    console.error('Could not import GitHub repository:', error)
+    const status = Number.isInteger(error.status) ? error.status : 503
+    response.status(status).json({
+      error: status < 500 ? error.message : 'Could not import the GitHub repository. Try again.',
+    })
+  }
+})
+app.post('/api/workspaces/:roomId/invites', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  const { roomId } = request.params
+  if (!isValidRoomId(roomId)) {
+    response.status(400).json({ error: 'The workspace ID is invalid.' })
+    return
+  }
+  try {
+    const [workspace, member] = await Promise.all([
+      getWorkspace(persistenceClient, roomId),
+      getWorkspaceMember(persistenceClient, roomId, user.id),
+    ])
+    if (!workspace || !member) {
+      response.status(404).json({ error: 'Workspace not found.' })
+      return
+    }
+    if (member.role !== 'owner') {
+      response.status(403).json({ error: 'Only the workspace owner can create invites.' })
+      return
+    }
+    const token = await createWorkspaceInvite(persistenceClient, roomId)
+    const inviteUrl = new URL('/', CLIENT_ORIGIN)
+    inviteUrl.searchParams.set('room', roomId)
+    inviteUrl.searchParams.set('invite', token)
+    response.status(201).json({ inviteUrl: inviteUrl.toString() })
+  } catch (error) {
+    console.error(`Could not create invite for workspace ${roomId}:`, error)
+    response.status(503).json({ error: 'Could not create an invite. Try again.' })
+  }
+})
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok', collaboration: 'yjs' })
 })
@@ -214,7 +387,7 @@ app.get('/ready', async (_request, response) => {
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: { origin: CLIENT_ORIGIN, credentials: true },
-  maxHttpBufferSize: 1_000_000,
+  maxHttpBufferSize: MAX_DOCUMENT_UPDATE_BYTES,
 })
 
 let persistenceClient
@@ -321,6 +494,7 @@ function leaveCurrentRoom(socket) {
   roomMembers?.delete(socket.id)
   if (roomMembers?.size === 0) localRoomMembers.delete(roomId)
   socket.data.roomId = undefined
+  socket.data.role = undefined
   socket.data.displayName = undefined
   publishRoomMembers(roomId)
   scheduleRoomEviction(roomId)
@@ -342,10 +516,24 @@ io.on('connection', (socket) => {
     }
 
     try {
+      const membership = await getWorkspaceAccess(
+        persistenceClient,
+        roomId,
+        socket.data.user,
+        payload?.inviteToken,
+      )
+      if (!membership) {
+        reply({
+          ok: false,
+          error: 'You do not have access to this workspace. Ask its owner for an invite.',
+        })
+        return
+      }
       leaveCurrentRoom(socket)
       const doc = await getRoomDocument(roomId)
       await socket.join(roomId)
       socket.data.roomId = roomId
+      socket.data.role = membership.role
       socket.data.displayName = name
       if (!localRoomMembers.has(roomId)) localRoomMembers.set(roomId, new Set())
       localRoomMembers.get(roomId).add(socket.id)
@@ -353,6 +541,8 @@ io.on('connection', (socket) => {
       reply({
         ok: true,
         state: Y.encodeStateAsUpdate(doc),
+        stateVector: Y.encodeStateVector(doc),
+        role: membership.role,
         members: roomMembers,
       })
       io.to(roomId).emit('presence:update', roomMembers)
@@ -373,8 +563,16 @@ io.on('connection', (socket) => {
       reply({ ok: false, error: 'Join the workspace before sending edits.' })
       return
     }
+    if (socket.data.role !== 'owner' && socket.data.role !== 'editor') {
+      reply({ ok: false, error: 'You do not have edit access to this workspace.' })
+      return
+    }
     const update = payload?.update
-    if (!(update instanceof Uint8Array) || update.byteLength === 0 || update.byteLength > 1_000_000) {
+    if (
+      !(update instanceof Uint8Array) ||
+      update.byteLength === 0 ||
+      update.byteLength > MAX_DOCUMENT_UPDATE_BYTES
+    ) {
       socket.emit('room:error', 'An invalid document update was rejected.')
       reply({ ok: false, error: 'The document update is invalid.' })
       return

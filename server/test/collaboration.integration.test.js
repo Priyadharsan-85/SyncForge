@@ -65,12 +65,40 @@ async function connect(url, name = 'Test User') {
 }
 
 function joinRoom(socket, roomId, name) {
+  return requestJoin(socket, roomId, name)
+}
+
+function requestJoin(socket, roomId, name, inviteToken) {
   return new Promise((resolve, reject) => {
-    socket.emit('room:join', { roomId, name }, (response) => {
-      if (response.ok) resolve(response)
-      else reject(new Error(response.error))
-    })
+    socket.emit('room:join', { roomId, name, inviteToken }, resolve)
   })
+}
+
+async function createWorkspace(url, name, workspaceName = 'Test workspace') {
+  const response = await fetch(`${url}/api/workspaces`, {
+    method: 'POST',
+    headers: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie(name),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name: workspaceName }),
+  })
+  assert.equal(response.status, 201)
+  return response.json()
+}
+
+async function createInvite(url, name, roomId) {
+  const response = await fetch(`${url}/api/workspaces/${roomId}/invites`, {
+    method: 'POST',
+    headers: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie(name),
+    },
+  })
+  assert.equal(response.status, 201)
+  const { inviteUrl } = await response.json()
+  return new URL(inviteUrl).searchParams.get('invite')
 }
 
 function bindDocument(socket, doc, roomId) {
@@ -177,7 +205,8 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   assert.match(originError.message, /Invalid origin/)
   wrongOriginSocket.disconnect()
 
-  const roomId = `test-${Date.now()}`
+  const workspace = await createWorkspace(url, 'Alex', 'Collaboration test')
+  const roomId = workspace.roomId
   const firstSocket = await connect(url, 'Alex')
   const secondSocket = await connect(url, 'Sam')
   sockets.push(firstSocket, secondSocket)
@@ -189,7 +218,24 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
     secondDoc.destroy()
   })
   const firstJoin = await joinRoom(firstSocket, roomId, 'Impersonator')
-  const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')
+  const deniedJoin = await requestJoin(secondSocket, roomId, 'Sam')
+  assert.equal(deniedJoin.ok, false)
+  assert.match(deniedJoin.error, /do not have access/)
+  const inviteToken = await createInvite(url, 'Alex', roomId)
+  const secondJoin = await requestJoin(secondSocket, roomId, 'Sam', inviteToken)
+  assert.equal(secondJoin.ok, true)
+  const samDashboard = await fetch(`${url}/api/workspaces`, {
+    headers: { Cookie: sessionCookie('Sam') },
+  })
+  assert.equal((await samDashboard.json())[0].roomId, roomId)
+  const editorInvite = await fetch(`${url}/api/workspaces/${roomId}/invites`, {
+    method: 'POST',
+    headers: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie('Sam'),
+    },
+  })
+  assert.equal(editorInvite.status, 403)
   assert.deepEqual(firstJoin.members.map((member) => member.name), ['Alex'])
   Y.applyUpdate(firstDoc, firstJoin.state)
   Y.applyUpdate(secondDoc, secondJoin.state)
@@ -225,6 +271,29 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
       sharedContent instanceof Y.Text &&
       sharedContent.toString() === 'export const answer = 42'
   })
+
+  const localImportResponse = await fetch(`${url}/api/workspaces/import/local`, {
+    method: 'POST',
+    headers: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie('Alex'),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'Imported local project',
+      files: [{ path: 'src/index.ts', content: 'export const imported = true' }],
+    }),
+  })
+  assert.equal(localImportResponse.status, 201)
+  const importedWorkspace = await localImportResponse.json()
+  const importedSocket = await connect(url, 'Alex')
+  sockets.push(importedSocket)
+  const importedJoin = await joinRoom(importedSocket, importedWorkspace.roomId, 'Alex')
+  const importedDoc = new Y.Doc()
+  t.after(() => importedDoc.destroy())
+  Y.applyUpdate(importedDoc, importedJoin.state)
+  const importedFile = importedDoc.getMap('files').get('src/index.ts')
+  assert.equal(importedFile.get('content').toString(), 'export const imported = true')
 })
 
 test('production server refuses to start without Redis persistence', async () => {
@@ -244,7 +313,7 @@ test('Redis-backed workspace recovers after restarting the server', {
 }, async (t) => {
   const port = await findOpenPort()
   const url = `http://127.0.0.1:${port}`
-  const roomId = `restart-${Date.now()}`
+  let roomId
   let child
   let socket
   let joinRetrySocket
@@ -280,6 +349,8 @@ test('Redis-backed workspace recovers after restarting the server', {
 
   await startServer()
   socket = await connect(url, 'Alex')
+  const workspace = await createWorkspace(url, 'Alex', 'Restart test')
+  roomId = workspace.roomId
   const initialJoin = await joinRoom(socket, roomId, 'Alex')
   const firstDoc = new Y.Doc()
   Y.applyUpdate(firstDoc, initialJoin.state)
@@ -287,6 +358,9 @@ test('Redis-backed workspace recovers after restarting the server', {
 
   redisClient = createClient({ url: process.env.REDIS_TEST_URL })
   await redisClient.connect()
+  const retryWorkspace = await createWorkspace(url, 'Alex', 'Retry test')
+  const retryRoomId = retryWorkspace.roomId
+  const retryInvite = await createInvite(url, 'Alex', retryRoomId)
   await redisClient.sendCommand(['CLIENT', 'PAUSE', '9000', 'ALL'])
   const readinessStart = Date.now()
   const stalledReadiness = await fetch(`${url}/ready`)
@@ -298,9 +372,12 @@ test('Redis-backed workspace recovers after restarting the server', {
   assert.ok(Date.now() - readinessStart < 1_600)
 
   joinRetrySocket = await connect(url, 'Sam')
-  const retryRoomId = `retry-${Date.now()}`
   const failedJoin = await new Promise((resolve) => {
-    joinRetrySocket.emit('room:join', { roomId: retryRoomId, name: 'Sam' }, resolve)
+    joinRetrySocket.emit('room:join', {
+      roomId: retryRoomId,
+      name: 'Sam',
+      inviteToken: retryInvite,
+    }, resolve)
   })
   assert.equal(failedJoin.ok, false)
   assert.equal(failedJoin.retryable, true)
@@ -320,7 +397,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   assert.ok(Date.now() - failedUpdateStart < 4_500)
 
   await redisClient.ping()
-  const recoveredJoin = await joinRoom(joinRetrySocket, retryRoomId, 'Sam')
+  const recoveredJoin = await requestJoin(joinRetrySocket, retryRoomId, 'Sam', retryInvite)
   assert.equal(recoveredJoin.ok, true)
 
   const updateResult = await new Promise((resolve) => {
@@ -350,7 +427,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   await startServer()
 
   socket = await connect(url)
-  const restoredJoin = await joinRoom(socket, roomId, 'Sam')
+  const restoredJoin = await joinRoom(socket, roomId, 'Alex')
   const restoredDoc = new Y.Doc()
   Y.applyUpdate(restoredDoc, restoredJoin.state)
   assert.equal(restoredDoc.getText('code').toString(), 'survives restart and compacted')
@@ -396,11 +473,13 @@ test('presence includes members connected to different server instances', {
   const firstSocket = await connect(firstUrl, 'Alex')
   const secondSocket = await connect(secondUrl, 'Sam')
   sockets.push(firstSocket, secondSocket)
-  const roomId = `presence-${Date.now()}`
+  const workspace = await createWorkspace(firstUrl, 'Alex', 'Presence test')
+  const roomId = workspace.roomId
+  const inviteToken = await createInvite(firstUrl, 'Alex', roomId)
   await joinRoom(firstSocket, roomId, 'Impersonator')
   await once(firstSocket, 'presence:update')
   const firstPresenceUpdate = once(firstSocket, 'presence:update')
-  const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')
+  const secondJoin = await requestJoin(secondSocket, roomId, 'Sam', inviteToken)
   const [updatedMembers] = await firstPresenceUpdate
 
   assert.deepEqual(

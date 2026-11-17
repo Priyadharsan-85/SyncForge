@@ -5,6 +5,7 @@ import {
   appendRoomUpdate,
   compactRoomIfNeeded,
   restoreRoomDocument,
+  storeInitialRoomDocument,
 } from '../src/redisStore.js'
 
 function createMemoryRedis() {
@@ -18,6 +19,17 @@ function createMemoryRedis() {
     streams,
     beforeCompact: undefined,
     async eval(script, { keys, arguments: args }) {
+      if (script.includes("redis.call('EXISTS'")) {
+        if (
+          snapshots.has(keys[0]) ||
+          checkpoints.has(keys[1]) ||
+          (streams.get(keys[2]) ?? []).length > 0
+        ) return 0
+        snapshots.set(keys[0], args[0])
+        checkpoints.set(keys[1], '0-0')
+        return 1
+      }
+
       if (script.includes('XADD')) {
         const entries = streams.get(keys[0]) ?? []
         const id = `${++nextId}-0`
@@ -59,6 +71,20 @@ function createMemoryRedis() {
   }
   return redis
 }
+
+test('imported documents start as a durable snapshot without an update stream', async () => {
+  const redis = createMemoryRedis()
+  const original = new Y.Doc()
+  original.getMap('files').set('README.md', 'content')
+
+  await storeInitialRoomDocument(redis, 'imported-room', original)
+  const restored = await restoreRoomDocument(redis, 'imported-room')
+
+  assert.equal(restored.getMap('files').get('README.md'), 'content')
+  assert.equal(redis.streams.get('syncforge:room:imported-room:updates'), undefined)
+  original.destroy()
+  restored.destroy()
+})
 
 test('persisted updates restore a document after a server restart', async () => {
   const redis = createMemoryRedis()

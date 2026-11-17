@@ -2,11 +2,14 @@
 
 SyncForge is an early-stage collaborative code workspace. Teammates can open the same room, edit together in Monaco, and continue working through a temporary network interruption. It uses **Yjs CRDTs** for concurrent edits; it does not implement Operational Transformation.
 
-> **Status:** MVP, not production-ready. GitHub sign-in is required, but rooms do not yet have per-user authorization: anyone who knows a room code can join. Do not use SyncForge for private or sensitive source code. Redis streams are compacted into snapshots, but Redis still needs durable backups and an operational retention policy for deployments.
+> **Status:** MVP, not production-ready. Authenticated owners and editors can collaborate; room IDs alone do not grant access. Redis still needs durable backups, an operational retention policy, and production monitoring before using SyncForge for important or sensitive source code.
 
 ## What works today
 
-- Create a room or join one using a room code or invite URL.
+- Create a private workspace and invite editors with a seven-day invite link. Only the owner can create invite links; invitees appear in the workspace dashboard after joining.
+- Browse workspaces you own or have been granted access to; knowing a room ID is not sufficient to join.
+- Import a folder or ZIP from your device. Unsupported/binary files are skipped; imports are limited to 300 text files, 512 KiB per file, and 6 MiB total. ZIP files are limited to 20 MiB and 16 MiB expanded.
+- Import public GitHub repositories. Existing GitHub contributors are automatically granted editor access and can open the workspace from their dashboard. Private repositories are not supported.
 - Create and edit multiple shared files in Monaco; Yjs merges concurrent edits.
 - Keep a local copy in browser IndexedDB and merge it back after reconnecting.
 - Show room presence and copy an invite link.
@@ -16,6 +19,8 @@ SyncForge is an early-stage collaborative code workspace. Teammates can open the
 - Use the Socket.IO Redis adapter for multi-process message distribution.
 - Share participant presence across server instances and evict idle room documents from Redis-backed server memory.
 - Run the web app, Node.js server, and Redis with Docker Compose.
+
+Workspaces created before room authorization was added have no recorded owner and are not automatically migrated. Their Redis document data is not deleted, but old room links cannot grant access; migrate ownership explicitly before relying on those workspaces.
 
 ## Run locally
 
@@ -71,7 +76,7 @@ npm run build
 ## Roadmap
 
 - Verify compaction behavior under concurrent writers and tune its threshold with representative workload tests.
-- Add per-room authorization, rate limits, and safe-by-default deployment settings.
+- Add rate limits and safe-by-default deployment settings.
 - Add meaningful observability before making scalability claims.
 - Improve the editor workflow with cursor awareness, file renaming/deletion, and accessible keyboard interactions.
 
