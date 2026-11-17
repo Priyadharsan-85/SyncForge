@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  applyHunks,
   computeLineOperations,
+  computePatchStats,
   formatUnifiedDiff,
   groupIntoHunks,
+  invertHunks,
   splitLines,
 } from '../src/diffPatch.js'
 
@@ -62,3 +65,52 @@ test('formatUnifiedDiff returns empty string if no changes', () => {
   const text = 'identical\ncode'
   assert.equal(formatUnifiedDiff('test.js', text, text), '')
 })
+
+test('applyHunks accurately applies changes to base text', () => {
+  const oldText = 'alpha\nbeta\ngamma\ndelta'
+  const newText = 'alpha\nbeta-prime\ngamma\ndelta\nepsilon'
+
+  const ops = computeLineOperations(oldText, newText)
+  const hunks = groupIntoHunks(ops, 1)
+
+  const applied = applyHunks(oldText, hunks)
+  assert.equal(applied.ok, true)
+  assert.equal(applied.result, newText)
+})
+
+test('applyHunks detects context mismatch and fails gracefully', () => {
+  const oldText = 'alpha\nbeta\ngamma'
+  const newText = 'alpha\nmodified\ngamma'
+  const hunks = groupIntoHunks(computeLineOperations(oldText, newText), 1)
+
+  const completelyDifferentText = 'omega\npsi\nchi'
+  const applied = applyHunks(completelyDifferentText, hunks)
+  assert.equal(applied.ok, false)
+  assert.ok(applied.error.includes('mismatch'))
+})
+
+test('invertHunks successfully rolls back applied changes', () => {
+  const original = 'first\nsecond\nthird'
+  const updated = 'first\nsecond-edited\nthird\nfourth'
+
+  const hunks = groupIntoHunks(computeLineOperations(original, updated), 1)
+  const applied = applyHunks(original, hunks)
+  assert.equal(applied.result, updated)
+
+  const inverted = invertHunks(hunks)
+  const rolledBack = applyHunks(updated, inverted)
+  assert.equal(rolledBack.ok, true)
+  assert.equal(rolledBack.result, original)
+})
+
+test('computePatchStats correctly tallies additions and deletions', () => {
+  const oldText = 'line1\nline2\nline3'
+  const newText = 'line1\nmodified2\nline3\nline4'
+  const hunks = groupIntoHunks(computeLineOperations(oldText, newText), 1)
+  const stats = computePatchStats(hunks)
+
+  assert.equal(stats.deletions, 1)
+  assert.equal(stats.additions, 2)
+  assert.equal(stats.hunksCount, 1)
+})
+
