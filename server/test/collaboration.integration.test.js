@@ -7,8 +7,11 @@ import test from 'node:test'
 import { createClient } from 'redis'
 import { io } from 'socket.io-client'
 import * as Y from 'yjs'
+import { createSessionToken, SESSION_COOKIE_NAME } from '../src/auth.js'
 
 const serverDirectory = fileURLToPath(new URL('../', import.meta.url))
+const clientOrigin = 'http://localhost:5173'
+const sessionSecret = 'syncforge-integration-test-session-secret'
 
 async function findOpenPort() {
   const probe = createServer()
@@ -37,8 +40,23 @@ async function waitForServer(child, url) {
   throw new Error('Collaboration server did not become ready in time.')
 }
 
-async function connect(url) {
-  const socket = io(url, { transports: ['websocket'], reconnection: false })
+function sessionCookie(name) {
+  const token = createSessionToken(
+    { id: name, login: name.toLowerCase().replace(/\s+/g, '-'), name },
+    sessionSecret,
+  )
+  return `${SESSION_COOKIE_NAME}=${token}`
+}
+
+async function connect(url, name = 'Test User') {
+  const socket = io(url, {
+    transports: ['websocket'],
+    reconnection: false,
+    extraHeaders: {
+      Origin: clientOrigin,
+      Cookie: sessionCookie(name),
+    },
+  })
   await Promise.race([
     once(socket, 'connect'),
     once(socket, 'connect_error').then(([error]) => Promise.reject(error)),
@@ -67,7 +85,16 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   const url = `http://127.0.0.1:${port}`
   const child = spawn(process.execPath, ['src/index.js'], {
     cwd: serverDirectory,
-    env: { ...process.env, PORT: String(port), REDIS_URL: '' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      REDIS_URL: '',
+      CLIENT_ORIGIN: clientOrigin,
+      SESSION_SECRET: sessionSecret,
+      GITHUB_CLIENT_ID: 'test-github-client',
+      GITHUB_CLIENT_SECRET: 'test-github-secret',
+      GITHUB_CALLBACK_URL: `${clientOrigin}/auth/github/callback`,
+    },
     stdio: 'ignore',
   })
   const sockets = []
@@ -81,10 +108,78 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
   const readiness = await fetch(`${url}/ready`)
   assert.equal(readiness.status, 200)
   assert.deepEqual(await readiness.json(), { status: 'ok', persistence: 'memory' })
+  const unauthenticatedResponse = await fetch(`${url}/auth/me`)
+  assert.equal(unauthenticatedResponse.status, 401)
+  const authenticatedResponse = await fetch(`${url}/auth/me`, {
+    headers: { Cookie: sessionCookie('Alex') },
+  })
+  assert.deepEqual(await authenticatedResponse.json(), {
+    id: 'Alex',
+    login: 'alex',
+    name: 'Alex',
+  })
+  const oauthStart = await fetch(
+    `${url}/auth/github?returnTo=${encodeURIComponent('//attacker.example')}`,
+    { redirect: 'manual' },
+  )
+  assert.equal(oauthStart.status, 302)
+  const authorizeUrl = new URL(oauthStart.headers.get('location'))
+  assert.equal(authorizeUrl.origin, 'https://github.com')
+  assert.equal(authorizeUrl.searchParams.get('client_id'), 'test-github-client')
+  const oauthStateCookie = oauthStart.headers.get('set-cookie')
+  assert.ok(oauthStateCookie?.includes('HttpOnly'))
+  const stateCookieValue = oauthStateCookie?.match(/syncforge_oauth_state=([^;]+)/)?.[1]
+  assert.equal(stateCookieValue, `${authorizeUrl.searchParams.get('state')}.Lw`)
+  const validOauthStart = await fetch(
+    `${url}/auth/github?returnTo=${encodeURIComponent('/?room=invite-room')}`,
+    { redirect: 'manual' },
+  )
+  const validAuthorizeUrl = new URL(validOauthStart.headers.get('location'))
+  const validStateCookie = validOauthStart.headers.get('set-cookie')
+  const deniedCallback = await fetch(
+    `${url}/auth/github/callback?state=${encodeURIComponent(validAuthorizeUrl.searchParams.get('state'))}&error=access_denied`,
+    {
+      headers: { Cookie: validStateCookie.split(';')[0] },
+      redirect: 'manual',
+    },
+  )
+  assert.equal(deniedCallback.status, 302)
+  const deniedDestination = new URL(deniedCallback.headers.get('location'))
+  assert.equal(deniedDestination.searchParams.get('room'), 'invite-room')
+  assert.equal(deniedDestination.searchParams.get('auth'), 'failed')
+  const logoutResponse = await fetch(`${url}/auth/logout`, {
+    method: 'POST',
+    headers: { Origin: clientOrigin },
+  })
+  assert.equal(logoutResponse.status, 204)
+  const invalidLogoutResponse = await fetch(`${url}/auth/logout`, {
+    method: 'POST',
+    headers: { Origin: 'https://attacker.example' },
+  })
+  assert.equal(invalidLogoutResponse.status, 403)
+  const unauthenticatedSocket = io(url, {
+    transports: ['websocket'],
+    reconnection: false,
+    extraHeaders: { Origin: clientOrigin },
+  })
+  const [authError] = await once(unauthenticatedSocket, 'connect_error')
+  assert.match(authError.message, /Authentication required/)
+  unauthenticatedSocket.disconnect()
+  const wrongOriginSocket = io(url, {
+    transports: ['websocket'],
+    reconnection: false,
+    extraHeaders: {
+      Origin: 'https://attacker.example',
+      Cookie: sessionCookie('Alex'),
+    },
+  })
+  const [originError] = await once(wrongOriginSocket, 'connect_error')
+  assert.match(originError.message, /Invalid origin/)
+  wrongOriginSocket.disconnect()
 
   const roomId = `test-${Date.now()}`
-  const firstSocket = await connect(url)
-  const secondSocket = await connect(url)
+  const firstSocket = await connect(url, 'Alex')
+  const secondSocket = await connect(url, 'Sam')
   sockets.push(firstSocket, secondSocket)
 
   const firstDoc = new Y.Doc()
@@ -93,8 +188,9 @@ test('two clients converge after concurrent edits', { timeout: 20_000 }, async (
     firstDoc.destroy()
     secondDoc.destroy()
   })
-  const firstJoin = await joinRoom(firstSocket, roomId, 'Alex')
+  const firstJoin = await joinRoom(firstSocket, roomId, 'Impersonator')
   const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')
+  assert.deepEqual(firstJoin.members.map((member) => member.name), ['Alex'])
   Y.applyUpdate(firstDoc, firstJoin.state)
   Y.applyUpdate(secondDoc, secondJoin.state)
   bindDocument(firstSocket, firstDoc, roomId)
@@ -162,6 +258,8 @@ test('Redis-backed workspace recovers after restarting the server', {
         PORT: String(port),
         REDIS_URL: process.env.REDIS_TEST_URL,
         REDIS_COMPACTION_THRESHOLD: '1',
+        CLIENT_ORIGIN: clientOrigin,
+        SESSION_SECRET: sessionSecret,
       },
       stdio: 'ignore',
     })
@@ -181,7 +279,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   })
 
   await startServer()
-  socket = await connect(url)
+  socket = await connect(url, 'Alex')
   const initialJoin = await joinRoom(socket, roomId, 'Alex')
   const firstDoc = new Y.Doc()
   Y.applyUpdate(firstDoc, initialJoin.state)
@@ -199,7 +297,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   })
   assert.ok(Date.now() - readinessStart < 1_600)
 
-  joinRetrySocket = await connect(url)
+  joinRetrySocket = await connect(url, 'Sam')
   const retryRoomId = `retry-${Date.now()}`
   const failedJoin = await new Promise((resolve) => {
     joinRetrySocket.emit('room:join', { roomId: retryRoomId, name: 'Sam' }, resolve)
@@ -275,6 +373,8 @@ test('presence includes members connected to different server instances', {
       ...process.env,
       PORT: String(port),
       REDIS_URL: process.env.REDIS_TEST_URL,
+      CLIENT_ORIGIN: clientOrigin,
+      SESSION_SECRET: sessionSecret,
     },
     stdio: 'ignore',
   }))
@@ -293,11 +393,11 @@ test('presence includes members connected to different server instances', {
     waitForServer(servers[0], firstUrl),
     waitForServer(servers[1], secondUrl),
   ])
-  const firstSocket = await connect(firstUrl)
-  const secondSocket = await connect(secondUrl)
+  const firstSocket = await connect(firstUrl, 'Alex')
+  const secondSocket = await connect(secondUrl, 'Sam')
   sockets.push(firstSocket, secondSocket)
   const roomId = `presence-${Date.now()}`
-  await joinRoom(firstSocket, roomId, 'Alex')
+  await joinRoom(firstSocket, roomId, 'Impersonator')
   await once(firstSocket, 'presence:update')
   const firstPresenceUpdate = once(firstSocket, 'presence:update')
   const secondJoin = await joinRoom(secondSocket, roomId, 'Sam')

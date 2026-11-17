@@ -1,10 +1,21 @@
 import cors from 'cors'
 import express from 'express'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { Server } from 'socket.io'
 import * as Y from 'yjs'
+import {
+  createSessionToken,
+  matchesSecret,
+  OAUTH_STATE_COOKIE_NAME,
+  readCookie,
+  safeReturnPath,
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_SECONDS,
+  verifySessionToken,
+} from './auth.js'
 import {
   appendRoomUpdate,
   compactRoomIfNeeded,
@@ -14,8 +25,13 @@ import {
 import { cleanDisplayName, isValidRoomId } from './validation.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
+const CLIENT_ORIGIN = new URL(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').origin
 const REDIS_URL = process.env.REDIS_URL
+const SESSION_SECRET = process.env.SESSION_SECRET ?? ''
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
+const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL ??
+  new URL('/auth/github/callback', CLIENT_ORIGIN).toString()
 const READINESS_TIMEOUT_MS = 1_000
 const ROOM_IDLE_TTL_MS = 60_000
 const REDIS_COMPACTION_THRESHOLD = Number(process.env.REDIS_COMPACTION_THRESHOLD ?? 500)
@@ -25,8 +41,142 @@ const roomEvictionTimers = new Map()
 const compactingRooms = new Set()
 const redisConnections = []
 
+function createCookie(name, value, maxAge) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`
+}
+
+function decodeReturnPath(encodedPath) {
+  if (typeof encodedPath !== 'string') return '/'
+  try {
+    return safeReturnPath(Buffer.from(encodedPath, 'base64url').toString('utf8'))
+  } catch {
+    return '/'
+  }
+}
+
+function authFailureUrl(returnPath, reason = 'failed') {
+  const url = new URL(safeReturnPath(returnPath), CLIENT_ORIGIN)
+  url.searchParams.set('auth', reason)
+  return url.toString()
+}
+
 const app = express()
-app.use(cors({ origin: CLIENT_ORIGIN }))
+app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
+app.get('/auth/me', (request, response) => {
+  const session = verifySessionToken(
+    readCookie(request.headers.cookie, SESSION_COOKIE_NAME),
+    SESSION_SECRET,
+  )
+  if (!session) {
+    response.status(401).json({ error: 'Authentication required.' })
+    return
+  }
+  response.json(session)
+})
+app.get('/auth/github', (request, response) => {
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || !SESSION_SECRET) {
+    response.redirect(authFailureUrl(safeReturnPath(request.query.returnTo), 'unconfigured'))
+    return
+  }
+
+  const state = randomUUID()
+  const returnTo = safeReturnPath(request.query.returnTo)
+  const stateCookie = `${state}.${Buffer.from(returnTo).toString('base64url')}`
+  response.append(
+    'Set-Cookie',
+    createCookie(OAUTH_STATE_COOKIE_NAME, stateCookie, 600),
+  )
+  const authorizeUrl = new URL('https://github.com/login/oauth/authorize')
+  authorizeUrl.searchParams.set('client_id', GITHUB_CLIENT_ID)
+  authorizeUrl.searchParams.set('redirect_uri', GITHUB_CALLBACK_URL)
+  authorizeUrl.searchParams.set('scope', 'read:user')
+  authorizeUrl.searchParams.set('state', state)
+  response.redirect(authorizeUrl.toString())
+})
+app.get('/auth/github/callback', async (request, response) => {
+  const stateCookie = readCookie(request.headers.cookie, OAUTH_STATE_COOKIE_NAME)
+  const [expectedState, encodedReturnPath, extra] = (stateCookie ?? '').split('.')
+  const returnTo = decodeReturnPath(encodedReturnPath)
+  response.append('Set-Cookie', createCookie(OAUTH_STATE_COOKIE_NAME, '', 0))
+
+  if (extra !== undefined || !matchesSecret(expectedState, request.query.state)) {
+    response.redirect(authFailureUrl('/'))
+    return
+  }
+  if (
+    typeof request.query.code !== 'string' ||
+    request.query.code.length > 2_048 ||
+    !GITHUB_CLIENT_ID ||
+    !GITHUB_CLIENT_SECRET ||
+    !SESSION_SECRET
+  ) {
+    response.redirect(authFailureUrl(returnTo))
+    return
+  }
+
+  try {
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'SyncForge',
+      },
+      body: new URLSearchParams({
+        client_id: GITHUB_CLIENT_ID ?? '',
+        client_secret: GITHUB_CLIENT_SECRET ?? '',
+        code: request.query.code,
+        redirect_uri: GITHUB_CALLBACK_URL,
+      }),
+    })
+    const tokenBody = await tokenResponse.json()
+    if (!tokenResponse.ok || typeof tokenBody.access_token !== 'string') {
+      throw new Error('GitHub did not issue an access token.')
+    }
+
+    const profileResponse = await fetch('https://api.github.com/user', {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${tokenBody.access_token}`,
+        'User-Agent': 'SyncForge',
+      },
+    })
+    const profile = await profileResponse.json()
+    if (
+      !profileResponse.ok ||
+      (typeof profile.id !== 'number' && typeof profile.id !== 'string') ||
+      typeof profile.login !== 'string'
+    ) {
+      throw new Error('GitHub returned an invalid profile.')
+    }
+
+    const login = profile.login.slice(0, 39)
+    const displayName = cleanDisplayName(
+      typeof profile.name === 'string' ? profile.name : login,
+    ) || login
+    const sessionToken = createSessionToken(
+      { id: String(profile.id), login, name: displayName },
+      SESSION_SECRET,
+    )
+    response.append(
+      'Set-Cookie',
+      createCookie(SESSION_COOKIE_NAME, sessionToken, SESSION_TTL_SECONDS),
+    )
+    response.redirect(new URL(returnTo, CLIENT_ORIGIN).toString())
+  } catch (error) {
+    console.error('GitHub sign-in failed:', error)
+    response.redirect(authFailureUrl(returnTo))
+  }
+})
+app.post('/auth/logout', (request, response) => {
+  if (request.get('origin') !== CLIENT_ORIGIN) {
+    response.status(403).json({ error: 'Invalid request origin.' })
+    return
+  }
+  response.append('Set-Cookie', createCookie(SESSION_COOKIE_NAME, '', 0))
+  response.status(204).end()
+})
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok', collaboration: 'yjs' })
 })
@@ -63,12 +213,30 @@ app.get('/ready', async (_request, response) => {
 
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
-  cors: { origin: CLIENT_ORIGIN },
+  cors: { origin: CLIENT_ORIGIN, credentials: true },
   maxHttpBufferSize: 1_000_000,
 })
 
 let persistenceClient
 let updatePublisher
+
+io.use((socket, next) => {
+  const origin = socket.handshake.headers.origin
+  if (origin !== CLIENT_ORIGIN) {
+    next(new Error('Invalid origin.'))
+    return
+  }
+  const user = verifySessionToken(
+    readCookie(socket.handshake.headers.cookie, SESSION_COOKIE_NAME),
+    SESSION_SECRET,
+  )
+  if (!user) {
+    next(new Error('Authentication required.'))
+    return
+  }
+  socket.data.user = user
+  next()
+})
 
 function cancelRoomEviction(roomId) {
   const timer = roomEvictionTimers.get(roomId)
@@ -162,7 +330,7 @@ io.on('connection', (socket) => {
   socket.on('room:join', async (payload, acknowledge) => {
     const reply = typeof acknowledge === 'function' ? acknowledge : () => {}
     const roomId = typeof payload?.roomId === 'string' ? payload.roomId.trim() : ''
-    const name = cleanDisplayName(payload?.name)
+    const name = socket.data.user.name
 
     if (!isValidRoomId(roomId)) {
       reply({ ok: false, error: 'Room IDs must be 3–48 letters, numbers, dashes or underscores.' })
@@ -278,6 +446,12 @@ io.on('connection', (socket) => {
 async function start() {
   if (process.env.NODE_ENV === 'production' && !REDIS_URL) {
     throw new Error('REDIS_URL is required in production for durable workspace storage.')
+  }
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || SESSION_SECRET.length < 32)
+  ) {
+    throw new Error('GitHub OAuth credentials and a 32-character SESSION_SECRET are required in production.')
   }
   if (REDIS_URL && (!Number.isSafeInteger(REDIS_COMPACTION_THRESHOLD) || REDIS_COMPACTION_THRESHOLD < 1)) {
     throw new Error('REDIS_COMPACTION_THRESHOLD must be a positive safe integer.')

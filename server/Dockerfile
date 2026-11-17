@@ -9,6 +9,8 @@ RUN npm ci --workspace=server --include-workspace-root=false --omit=dev
 
 COPY server server
 
+ENV NODE_ENV=production
+
 EXPOSE 3001
 
 CMD ["npm", "run", "start", "--workspace", "server"]

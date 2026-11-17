@@ -25,6 +25,7 @@ import './App.css'
 import { bindYTextToMonaco } from './editorBinding'
 
 type Member = { id: string; name: string }
+type User = { id: string; login: string; name: string }
 type WorkspaceFile = { id: string; name: string; content: Y.Text }
 type ConnectionState = 'connecting' | 'connected' | 'offline'
 type JoinResponse = {
@@ -51,7 +52,7 @@ console.log(greet('world'))
 `
 
 const roomFromUrl = new URLSearchParams(window.location.search).get('room')
-const rememberedName = window.localStorage.getItem('syncforge:name') ?? ''
+const authResult = new URLSearchParams(window.location.search).get('auth')
 
 function createRoomId() {
   return crypto.randomUUID().slice(0, 8)
@@ -98,15 +99,23 @@ function languageForFile(name: string) {
 }
 
 function App() {
-  const [name, setName] = useState(rememberedName)
+  const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
   const [roomInput, setRoomInput] = useState(roomFromUrl ?? '')
-  const [roomId, setRoomId] = useState(rememberedName ? roomFromUrl ?? '' : '')
+  const [roomId, setRoomId] = useState(roomFromUrl ?? '')
   const [members, setMembers] = useState<Member[]>([])
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([])
   const [activeFileId, setActiveFileId] = useState('')
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [localReady, setLocalReady] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(
+    authResult === 'unconfigured'
+      ? 'GitHub sign-in is not configured on this server yet.'
+      : authResult === 'failed'
+        ? 'GitHub sign-in did not complete. Please try again.'
+        : '',
+  )
   const [copied, setCopied] = useState(false)
   const [showNewFile, setShowNewFile] = useState(false)
   const [newFileName, setNewFileName] = useState('')
@@ -117,7 +126,27 @@ function App() {
   const bindingRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    if (!roomId || !name.trim()) return
+    let active = true
+    fetch('/auth/me', { cache: 'no-store' })
+      .then(async (response) => {
+        if (response.status === 401) return null
+        if (!response.ok) throw new Error('Could not verify your SyncForge session.')
+        return response.json() as Promise<User>
+      })
+      .then((session) => {
+        if (active) setUser(session)
+      })
+      .catch(() => {
+        if (active) setAuthError('Could not connect to SyncForge authentication. Check your connection and retry.')
+      })
+      .finally(() => {
+        if (active) setAuthLoading(false)
+      })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!roomId || !user) return
 
     const doc = new Y.Doc()
     const legacyText = doc.getText('code')
@@ -236,7 +265,7 @@ function App() {
 
     function joinRoom() {
       if (!socket.connected) return
-      socket.emit('room:join', { roomId, name: name.trim() }, (response: JoinResponse) => {
+      socket.emit('room:join', { roomId }, (response: JoinResponse) => {
         if (!response.ok || !response.state) {
           setError(response.error ?? 'Could not join this room.')
           setConnection('offline')
@@ -324,7 +353,7 @@ function App() {
       filesRef.current = null
       textRef.current = null
     }
-  }, [roomId, name])
+  }, [roomId, user])
 
   const activeFile = workspaceFiles.find((file) => file.id === activeFileId)
 
@@ -351,18 +380,16 @@ function App() {
   }
 
   function enterRoom(id: string) {
-    const cleanName = name.trim().slice(0, 32)
     const cleanRoom = id.trim()
-    if (!cleanName) {
-      setError('Add your name before opening a workspace.')
-      return
-    }
     if (!/^[a-zA-Z0-9_-]{3,48}$/.test(cleanRoom)) {
       setError('Room IDs must be 3–48 letters, numbers, dashes or underscores.')
       return
     }
-    window.localStorage.setItem('syncforge:name', cleanName)
-    setName(cleanName)
+    if (!user) {
+      const returnTo = `${window.location.pathname}?room=${encodeURIComponent(cleanRoom)}`
+      window.location.assign(`/auth/github?returnTo=${encodeURIComponent(returnTo)}`)
+      return
+    }
     setLocalReady(false)
     setConnection('connecting')
     setError('')
@@ -372,6 +399,16 @@ function App() {
     setRoomId(cleanRoom)
     setError('')
     window.history.replaceState(null, '', `?room=${encodeURIComponent(cleanRoom)}`)
+  }
+
+  async function signOut() {
+    try {
+      const response = await fetch('/auth/logout', { method: 'POST' })
+      if (!response.ok) throw new Error('Sign-out request failed.')
+      window.location.assign('/')
+    } catch {
+      setError('Could not sign out. Check your connection and try again.')
+    }
   }
 
   function leaveRoom() {
@@ -427,7 +464,11 @@ function App() {
     }
   }
 
-  if (!roomId) {
+  if (authLoading) {
+    return <main className="auth-loading" role="status">Checking your SyncForge session…</main>
+  }
+
+  if (!roomId || !user) {
     return (
       <main className="welcome">
         <header className="welcome-nav">
@@ -438,6 +479,11 @@ function App() {
           <a className="github-link" href="https://github.com/Priyadharsan-85/SyncForge" target="_blank" rel="noreferrer">
             <Github size={16} /> Open source <ArrowUpRight size={14} />
           </a>
+          {user && (
+            <button className="github-link auth-nav-button" onClick={signOut}>
+              <LogOut size={14} /> Sign out
+            </button>
+          )}
         </header>
 
         <section className="welcome-content">
@@ -454,15 +500,14 @@ function App() {
               enterRoom(roomInput || createRoomId())
             }}
           >
-            <label htmlFor="display-name">YOUR NAME</label>
-            <input
-              id="display-name"
-              autoComplete="name"
-              maxLength={32}
-              placeholder="e.g. Alex Morgan"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
+            {user ? (
+              <div className="signed-in-user">
+                <span className="profile-avatar">{initials(user.name) || 'Y'}</span>
+                <span>Signed in as <b>{user.name}</b> <small>@{user.login}</small></span>
+              </div>
+            ) : (
+              <p className="sign-in-prompt">Sign in with GitHub to create or join a shared workspace.</p>
+            )}
             <div className="room-input-label">
               <label htmlFor="room-id">ROOM CODE</label>
               <span>Have an invite? Enter its code</span>
@@ -476,9 +521,10 @@ function App() {
               onChange={(event) => setRoomInput(event.target.value)}
             />
             <button className="primary-button" type="submit">
-              {roomInput ? 'Join workspace' : 'Create a workspace'}
+              {user ? roomInput ? 'Join workspace' : 'Create a workspace' : 'Continue with GitHub'}
               <ArrowUpRight size={17} />
             </button>
+            {authError && <p className="form-error" role="alert">{authError} <button type="button" className="inline-retry" onClick={() => window.location.reload()}>Retry</button></p>}
             {error && <p className="form-error" role="alert">{error}</p>}
             <div className="join-footnote">
               <Wifi size={14} /> Changes sync live. Your work is saved on this device.
@@ -529,6 +575,9 @@ function App() {
         <button className="share-button" onClick={copyInvite}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
           {copied ? 'Copied' : 'Invite'}
+        </button>
+        <button className="icon-button" onClick={signOut} aria-label="Sign out of GitHub" title="Sign out">
+          <LogOut size={16} />
         </button>
         <button className="icon-button leave-button" onClick={leaveRoom} aria-label="Leave workspace" title="Leave workspace">
           <LogOut size={17} />
@@ -624,8 +673,8 @@ function App() {
         <aside className="activity-panel">
           <div className="activity-heading"><span>IN THIS ROOM</span><span className="activity-live"><i /> LIVE</span></div>
           <div className="profile-card">
-            <span className="profile-avatar">{initials(name) || 'Y'}</span>
-            <div><b>{name || 'You'}</b><small>You · editing</small></div>
+            <span className="profile-avatar">{initials(user.name) || 'Y'}</span>
+            <div><b>{user.name}</b><small>You · editing</small></div>
             <span className="profile-status" />
           </div>
           <div className="activity-separator" />

@@ -2,6 +2,15 @@
   min-height: 100vh;
 }
 
+.auth-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  color: #a4a5b1;
+  background: var(--bg);
+  font-size: 13px;
+}
+
 .welcome {
   min-height: 100vh;
   display: flex;
@@ -64,6 +73,14 @@
 .github-link:hover,
 .help-link:hover {
   color: var(--accent);
+}
+
+.auth-nav-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
 }
 
 .welcome-content {
@@ -155,6 +172,40 @@
   color: #f0f0f4;
   font-size: 13px;
   transition: border-color .16s, box-shadow .16s;
+}
+
+.signed-in-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  color: #a4a5b1;
+  font-size: 11px;
+}
+
+.signed-in-user b {
+  color: #e0e1e8;
+}
+
+.signed-in-user small {
+  margin-left: 4px;
+  color: #81828f;
+}
+
+.sign-in-prompt {
+  margin: 0 0 2px;
+  color: #a4a5b1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inline-retry {
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .join-card input::placeholder {
