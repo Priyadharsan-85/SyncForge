@@ -12,10 +12,11 @@ function createMemoryRedis() {
   const checkpoints = new Map()
   const streams = new Map()
   let nextId = 0
-  return {
+  const redis = {
     snapshots,
     checkpoints,
     streams,
+    beforeCompact: undefined,
     async eval(script, { keys, arguments: args }) {
       if (script.includes('XADD')) {
         const entries = streams.get(keys[0]) ?? []
@@ -26,6 +27,9 @@ function createMemoryRedis() {
       }
 
       if (script.includes('XTRIM')) {
+        const hook = redis.beforeCompact
+        redis.beforeCompact = undefined
+        if (hook) await hook()
         const checkpoint = checkpoints.get(keys[1]) ?? '0-0'
         if (checkpoint !== args[0] || args[0] === args[1]) return 0
         snapshots.set(keys[0], args[2])
@@ -53,6 +57,7 @@ function createMemoryRedis() {
       return streams.get(key)?.length ?? 0
     },
   }
+  return redis
 }
 
 test('persisted updates restore a document after a server restart', async () => {
@@ -110,5 +115,24 @@ test('compaction replaces log history with a recoverable snapshot', async () => 
   assert.equal(restored.getText('code').toString(), 'snapshot checkpoint safely')
   original.destroy()
   laterDoc.destroy()
+  restored.destroy()
+})
+
+test('compaction preserves updates appended while its snapshot is being committed', async () => {
+  const redis = createMemoryRedis()
+  const doc = new Y.Doc()
+  const text = doc.getText('code')
+  text.insert(0, 'first')
+  await appendRoomUpdate(redis, 'team-room', Y.encodeStateAsUpdate(doc), 1)
+
+  redis.beforeCompact = async () => {
+    text.insert(text.length, ' update')
+    await appendRoomUpdate(redis, 'team-room', Y.encodeStateAsUpdate(doc), 1)
+  }
+  await compactRoomIfNeeded(redis, 'team-room', 1)
+
+  const restored = await restoreRoomDocument(redis, 'team-room')
+  assert.equal(restored.getText('code').toString(), 'first update')
+  doc.destroy()
   restored.destroy()
 })
