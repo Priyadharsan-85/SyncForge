@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api': serverUrl,
       '/auth': serverUrl,
       '/health': serverUrl,
       '/socket.io': {
