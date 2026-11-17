@@ -112,12 +112,17 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('document:update', async (payload) => {
+  socket.on('document:update', async (payload, acknowledge) => {
+    const reply = typeof acknowledge === 'function' ? acknowledge : () => {}
     const roomId = socket.data.roomId
-    if (!roomId || payload?.roomId !== roomId) return
+    if (!roomId || payload?.roomId !== roomId) {
+      reply({ ok: false, error: 'Join the workspace before sending edits.' })
+      return
+    }
     const update = payload?.update
     if (!(update instanceof Uint8Array) || update.byteLength === 0 || update.byteLength > 1_000_000) {
       socket.emit('room:error', 'An invalid document update was rejected.')
+      reply({ ok: false, error: 'The document update is invalid.' })
       return
     }
 
@@ -136,6 +141,7 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error(`Could not persist or apply update for room ${roomId}:`, error)
       socket.emit('room:error', 'A document update could not be applied.')
+      reply({ ok: false, error: 'The document update could not be saved.' })
       return
     }
 
@@ -148,8 +154,11 @@ io.on('connection', (socket) => {
       } catch (error) {
         console.error(`Could not replicate update for room ${roomId}:`, error)
         socket.emit('room:error', 'Your edit was applied here, but could not be replicated to every server. Please retry.')
+        reply({ ok: false, error: 'The edit was saved but could not be shared with every server.' })
+        return
       }
     }
+    reply({ ok: true })
   })
 
   socket.on('disconnect', () => leaveCurrentRoom(socket))

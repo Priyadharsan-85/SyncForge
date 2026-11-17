@@ -23,7 +23,9 @@ async function findOpenPort() {
 async function waitForServer(child, url) {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error('Collaboration server exited before becoming ready.')
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error('Collaboration server exited before becoming ready.')
+    }
     try {
       const response = await fetch(`${url}/health`)
       if (response.ok) return
@@ -137,6 +139,67 @@ test('production server refuses to start without Redis persistence', async () =>
 
   const [code] = await once(child, 'exit')
   assert.equal(code, 1)
+})
+
+test('Redis-backed workspace recovers after restarting the server', {
+  skip: !process.env.REDIS_TEST_URL,
+  timeout: 30_000,
+}, async (t) => {
+  const port = await findOpenPort()
+  const url = `http://127.0.0.1:${port}`
+  const roomId = `restart-${Date.now()}`
+  let child
+  let socket
+
+  const startServer = async () => {
+    child = spawn(process.execPath, ['src/index.js'], {
+      cwd: serverDirectory,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        REDIS_URL: process.env.REDIS_TEST_URL,
+      },
+      stdio: 'ignore',
+    })
+    await waitForServer(child, url)
+  }
+  const stopServer = async () => {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return
+    const exited = once(child, 'exit')
+    child.kill('SIGTERM')
+    await exited
+  }
+  t.after(async () => {
+    socket?.disconnect()
+    await stopServer()
+  })
+
+  await startServer()
+  socket = await connect(url)
+  const initialJoin = await joinRoom(socket, roomId, 'Alex')
+  const firstDoc = new Y.Doc()
+  Y.applyUpdate(firstDoc, initialJoin.state)
+  firstDoc.getText('code').insert(0, 'survives restart')
+  const updateResult = await new Promise((resolve) => {
+    socket.emit('document:update', {
+      roomId,
+      update: Y.encodeStateAsUpdate(firstDoc),
+    }, resolve)
+  })
+  assert.deepEqual(updateResult, { ok: true })
+  firstDoc.destroy()
+
+  socket.disconnect()
+  socket = undefined
+  await stopServer()
+  await startServer()
+
+  socket = await connect(url)
+  const restoredJoin = await joinRoom(socket, roomId, 'Sam')
+  const restoredDoc = new Y.Doc()
+  Y.applyUpdate(restoredDoc, restoredJoin.state)
+  assert.equal(restoredDoc.getText('code').toString(), 'survives restart')
+  restoredDoc.destroy()
 })
 
 async function waitUntil(predicate) {
