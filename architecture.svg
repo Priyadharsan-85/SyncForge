@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title description">
+  <title id="title">SyncForge system architecture</title>
+  <desc id="description">Collaborators use a React and Monaco client with Yjs and IndexedDB. Socket.IO and REST connect to scalable Node.js server instances, which use Redis for workspace data, persistence, presence, pub/sub and rate limits. GitHub provides OAuth and public repository imports.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1">
+      <stop offset="0" stop-color="#c3f56b"/>
+      <stop offset="1" stop-color="#85d7ad"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#91a2bc"/>
+    </marker>
+    <marker id="arrowAccent" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#c3f56b"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .inner { fill: #1d2330; stroke: #343e4f; stroke-width: 1; }
+      .connector { fill: none; stroke: #91a2bc; stroke-width: 2.5; marker-end: url(#arrow); }
+      .connector-accent { fill: none; stroke: #c3f56b; stroke-width: 2.5; marker-end: url(#arrowAccent); }
+    </style>
+  </defs>
+
+  <rect width="1400" height="760" rx="28" fill="url(#background)"/>
+  <circle cx="1285" cy="82" r="180" fill="#c3f56b" opacity=".035"/>
+  <circle cx="92" cy="690" r="210" fill="#7ea8ff" opacity=".035"/>
+
+  <text x="54" y="58" class="mono lime" font-size="13" letter-spacing="2.5">SYNCFORGE / UNDER THE HOOD</text>
+  <text x="54" y="103" class="sans bright" font-size="34" font-weight="700">A shared document, built to stay in sync.</text>
+  <text x="54" y="132" class="sans muted" font-size="16">Concurrent Yjs updates are persisted first, then distributed to everyone in the room.</text>
+
+  <path d="M380 294H482" class="connector-accent"/>
+  <text x="397" y="278" class="mono muted" font-size="12">REST + Socket.IO</text>
+  <path d="M900 294H992" class="connector"/>
+  <text x="916" y="278" class="mono muted" font-size="12">persist / pub-sub</text>
+  <path d="M250 470V548H490" class="connector"/>
+  <text x="270" y="524" class="mono muted" font-size="12">OAuth + public import</text>
+
+  <rect x="48" y="168" width="332" height="302" rx="18" class="card"/>
+  <rect x="70" y="190" width="42" height="42" rx="12" fill="#283425"/>
+  <path d="m88 201-8 10 8 10m10-20 8 10-8 10" fill="none" stroke="#c3f56b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="126" y="207" class="mono lime" font-size="12" letter-spacing="1.5">TEAM CLIENTS</text>
+  <text x="126" y="228" class="sans bright" font-size="18" font-weight="700">React + Monaco</text>
+
+  <rect x="70" y="252" width="288" height="48" rx="10" class="inner"/>
+  <circle cx="92" cy="276" r="6" fill="#c3f56b"/>
+  <text x="110" y="273" class="sans bright" font-size="14" font-weight="600">Shared Yjs document</text>
+  <text x="110" y="290" class="sans muted" font-size="11">CRDT edits merge concurrently</text>
+
+  <rect x="70" y="312" width="288" height="48" rx="10" class="inner"/>
+  <circle cx="92" cy="336" r="6" fill="#85d7ad"/>
+  <text x="110" y="333" class="sans bright" font-size="14" font-weight="600">Live collaboration</text>
+  <text x="110" y="350" class="sans muted" font-size="11">Presence, files, reconnect recovery</text>
+
+  <rect x="70" y="372" width="288" height="48" rx="10" class="inner"/>
+  <circle cx="92" cy="396" r="6" fill="#8bb4ff"/>
+  <text x="110" y="393" class="sans bright" font-size="14" font-weight="600">Browser IndexedDB</text>
+  <text x="110" y="410" class="sans muted" font-size="11">Local copy survives brief disconnects</text>
+  <text x="70" y="449" class="mono muted" font-size="11">OWNERS  ·  EDITORS  ·  INVITEES</text>
+
+  <rect x="490" y="168" width="410" height="402" rx="18" class="card"/>
+  <text x="516" y="204" class="mono lime" font-size="12" letter-spacing="1.5">COLLABORATION SERVICE</text>
+  <text x="516" y="232" class="sans bright" font-size="21" font-weight="700">Node.js + Express + Yjs</text>
+  <text x="516" y="258" class="sans muted" font-size="13">OAuth sessions · workspace ACL · REST API</text>
+
+  <rect x="516" y="282" width="358" height="88" rx="12" class="inner"/>
+  <rect x="532" y="299" width="10" height="10" rx="5" fill="#c3f56b"/>
+  <text x="554" y="309" class="sans bright" font-size="15" font-weight="600">Server instance A</text>
+  <text x="532" y="340" class="mono muted" font-size="12">Socket.IO rooms + document updates</text>
+  <text x="532" y="358" class="mono muted" font-size="12">persist accepted edits before fan-out</text>
+
+  <rect x="516" y="386" width="358" height="88" rx="12" class="inner"/>
+  <rect x="532" y="403" width="10" height="10" rx="5" fill="#85d7ad"/>
+  <text x="554" y="413" class="sans bright" font-size="15" font-weight="600">Server instance B ... N</text>
+  <text x="532" y="444" class="mono muted" font-size="12">same access rules, shared room events</text>
+  <text x="532" y="462" class="mono muted" font-size="12">scale horizontally behind one origin</text>
+
+  <rect x="516" y="492" width="358" height="48" rx="10" fill="#263020" stroke="#465838"/>
+  <text x="695" y="522" text-anchor="middle" class="mono lime" font-size="12">ACCEPT  →  PERSIST  →  BROADCAST</text>
+
+  <rect x="1000" y="168" width="352" height="402" rx="18" class="card"/>
+  <text x="1026" y="204" class="mono lime" font-size="12" letter-spacing="1.5">SHARED BACKPLANE</text>
+  <text x="1026" y="232" class="sans bright" font-size="21" font-weight="700">Redis</text>
+
+  <rect x="1026" y="252" width="300" height="58" rx="10" class="inner"/>
+  <text x="1044" y="277" class="sans bright" font-size="14" font-weight="600">Workspace metadata</text>
+  <text x="1044" y="296" class="sans muted" font-size="11">Owners, editors, hashed invites</text>
+
+  <rect x="1026" y="322" width="300" height="58" rx="10" class="inner"/>
+  <text x="1044" y="347" class="sans bright" font-size="14" font-weight="600">Streams + snapshots</text>
+  <text x="1044" y="366" class="sans muted" font-size="11">Durable updates and restart recovery</text>
+
+  <rect x="1026" y="392" width="300" height="58" rx="10" class="inner"/>
+  <text x="1044" y="417" class="sans bright" font-size="14" font-weight="600">Adapter pub/sub</text>
+  <text x="1044" y="436" class="sans muted" font-size="11">Presence and events across instances</text>
+
+  <rect x="1026" y="462" width="300" height="58" rx="10" class="inner"/>
+  <text x="1044" y="487" class="sans bright" font-size="14" font-weight="600">Rate-limit counters</text>
+  <text x="1044" y="506" class="sans muted" font-size="11">Atomic per-user hourly limits</text>
+
+  <rect x="48" y="570" width="332" height="118" rx="18" class="card"/>
+  <text x="72" y="602" class="mono lime" font-size="12" letter-spacing="1.5">GITHUB</text>
+  <text x="72" y="630" class="sans bright" font-size="17" font-weight="700">OAuth + public imports</text>
+  <text x="72" y="654" class="sans muted" font-size="12">Contributor IDs grant editor access.</text>
+  <text x="72" y="674" class="sans muted" font-size="12">Private repository import is not enabled.</text>
+
+  <text x="490" y="642" class="sans muted" font-size="13">Redis is required in production. Keep backups, monitoring,</text>
+  <text x="490" y="664" class="sans muted" font-size="13">and retention policies appropriate for your source code.</text>
+  <text x="490" y="718" class="mono muted" font-size="11">SYNCFORGE  /  REAL-TIME COLLABORATION</text>
+</svg>
