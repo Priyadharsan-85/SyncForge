@@ -33,6 +33,11 @@ type JoinResponse = {
   members?: Member[]
   error?: string
 }
+type UpdateResponse = {
+  ok: boolean
+  retryable?: boolean
+  error?: string
+}
 
 const starterCode = `// Welcome to SyncForge
 // Open this room in another tab to collaborate in real time.
@@ -120,6 +125,11 @@ function App() {
     const persistence = new IndexeddbPersistence(`syncforge:${roomId}`, doc)
     let joined = false
     let disposed = false
+    let documentRevision = 0
+    let retryDelay = 500
+    let retryPending = false
+    let retryInFlight = false
+    let retryTimer: number | undefined
 
     filesRef.current = files
     const refreshFiles = () => {
@@ -154,18 +164,72 @@ function App() {
     files.observe(refreshFiles)
     legacyText.observe(ensureInitialFile)
 
-    const sendDocument = () => {
+    function scheduleRetry() {
+      if (disposed || retryTimer !== undefined || !joined || !socket.connected) return
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined
+        sendDocument(true)
+      }, retryDelay)
+      retryDelay = Math.min(retryDelay * 2, 5_000)
+    }
+
+    function handleUpdateAcknowledgement(
+      response: UpdateResponse,
+      isRecovery: boolean,
+      sentRevision: number,
+    ) {
+      if (disposed) return
+      if (response.ok) {
+        if (!retryPending) retryDelay = 500
+        if (isRecovery) {
+          retryInFlight = false
+          if (documentRevision === sentRevision) {
+            retryPending = false
+            retryDelay = 500
+            if (retryTimer !== undefined) {
+              window.clearTimeout(retryTimer)
+              retryTimer = undefined
+            }
+            setError('')
+          } else {
+            scheduleRetry()
+          }
+        }
+        return
+      }
+
+      if (isRecovery) retryInFlight = false
+      if (response.retryable) {
+        retryPending = true
+        setError('Temporary server issue. Your edits are saved in this browser and will retry automatically.')
+        scheduleRetry()
+      } else {
+        if (isRecovery) retryPending = false
+        setError(response.error ?? 'A document update could not be saved.')
+      }
+    }
+
+    function sendDocument(isRecovery = retryPending) {
       if (joined && socket.connected) {
+        const sentRevision = documentRevision
+        if (isRecovery) retryInFlight = true
         socket.emit('document:update', {
           roomId,
           update: Y.encodeStateAsUpdate(doc),
-        })
+        }, (response: UpdateResponse) =>
+          handleUpdateAcknowledgement(response, isRecovery, sentRevision))
       }
     }
 
     const onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin !== socket && joined && socket.connected) {
-        socket.emit('document:update', { roomId, update })
+        documentRevision += 1
+        if (retryPending) {
+          if (!retryInFlight && retryTimer === undefined) scheduleRetry()
+          return
+        }
+        socket.emit('document:update', { roomId, update }, (response: UpdateResponse) =>
+          handleUpdateAcknowledgement(response, false, documentRevision))
       }
     }
 
@@ -209,6 +273,7 @@ function App() {
 
     return () => {
       disposed = true
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer)
       doc.off('update', onDocumentUpdate)
       files.unobserve(refreshFiles)
       legacyText.unobserve(ensureInitialFile)

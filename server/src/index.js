@@ -144,21 +144,31 @@ io.on('connection', (socket) => {
     }
 
     let doc
+    let retryable = Boolean(persistenceClient)
     try {
       doc = await getRoomDocument(roomId)
+      retryable = false
       const validationDoc = new Y.Doc()
       try {
         Y.applyUpdate(validationDoc, update)
       } finally {
         validationDoc.destroy()
       }
-      if (persistenceClient) await appendRoomUpdate(persistenceClient, roomId, update)
+      if (persistenceClient) {
+        retryable = true
+        await appendRoomUpdate(persistenceClient, roomId, update)
+        retryable = false
+      }
       Y.applyUpdate(doc, update)
       socket.to(roomId).emit('document:update', update)
     } catch (error) {
       console.error(`Could not persist or apply update for room ${roomId}:`, error)
       socket.emit('room:error', 'A document update could not be applied.')
-      reply({ ok: false, error: 'The document update could not be saved.' })
+      reply({
+        ok: false,
+        retryable,
+        error: 'The document update could not be saved.',
+      })
       return
     }
 
@@ -171,7 +181,11 @@ io.on('connection', (socket) => {
       } catch (error) {
         console.error(`Could not replicate update for room ${roomId}:`, error)
         socket.emit('room:error', 'Your edit was applied here, but could not be replicated to every server. Please retry.')
-        reply({ ok: false, error: 'The edit was saved but could not be shared with every server.' })
+        reply({
+          ok: false,
+          retryable: true,
+          error: 'The edit was saved but could not be shared with every server.',
+        })
         return
       }
     }
