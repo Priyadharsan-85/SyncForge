@@ -6,6 +6,10 @@ import {
   groupIntoHunks,
 } from './diffPatch.js'
 import { threeWayMerge } from './semanticMerge.js'
+import { consumeRateLimit } from './rateLimit.js'
+
+export const AI_DRAFT_RATE_LIMIT = 30
+export const AI_DRAFT_WINDOW_SECONDS = 3600
 
 export class AiAssistantError extends Error {
   constructor(message, status = 400) {
@@ -218,6 +222,22 @@ export function listUserDrafts(roomId, userId) {
 export function discardDraftPatch(draftId) {
   return memoryDrafts.delete(draftId)
 }
+
+/**
+ * Enforce rate limit on AI draft generation.
+ * @param {import('redis').RedisClientType | null} client
+ * @param {string} userId
+ * @returns {Promise<{ allowed: boolean, retryAfterSeconds: number }>}
+ */
+export async function checkAiDraftRateLimit(client, userId) {
+  return consumeRateLimit(client, {
+    scope: 'ai-draft',
+    actor: String(userId),
+    limit: AI_DRAFT_RATE_LIMIT,
+    windowSeconds: AI_DRAFT_WINDOW_SECONDS,
+  })
+}
+
 
 /**
  * Rebase a draft patch against current live workspace content.

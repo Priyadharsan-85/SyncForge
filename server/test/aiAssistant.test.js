@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  checkAiDraftRateLimit,
   checksum,
   createDraftPatch,
   discardDraftPatch,
@@ -99,3 +100,18 @@ test('rebaseDraftPatch evaluates concurrent live changes against proposal', () =
   assert.equal(conflictRebase.hasConflict, true)
   assert.ok(conflictRebase.conflicts.length > 0)
 })
+
+test('checkAiDraftRateLimit throttles excessive draft requests', async () => {
+  const actor = 'rate-test-user'
+  // Consume all up to limit
+  let lastResult
+  for (let i = 0; i < 30; i++) {
+    lastResult = await checkAiDraftRateLimit(null, actor)
+    assert.equal(lastResult.allowed, true)
+  }
+  // 31st request should be throttled
+  const throttled = await checkAiDraftRateLimit(null, actor)
+  assert.equal(throttled.allowed, false)
+  assert.ok(throttled.retryAfterSeconds > 0)
+})
+
