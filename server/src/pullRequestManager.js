@@ -183,6 +183,15 @@ export async function getPullRequestDiff(client, roomId, prNumber) {
   const sourceTree = sourceCommit?.tree ?? {}
   const targetTree = targetCommit?.tree ?? {}
 
+  // Find base tree from source's parent commit if available
+  let baseTree = targetTree
+  if (sourceCommit?.parentCommitId) {
+    const parentCommit = await getCommit(client, roomId, sourceCommit.parentCommitId)
+    if (parentCommit?.tree) {
+      baseTree = parentCommit.tree
+    }
+  }
+
   const allFiles = new Set([...Object.keys(sourceTree), ...Object.keys(targetTree)])
   const fileDiffs = []
   let totalAdditions = 0
@@ -192,6 +201,7 @@ export async function getPullRequestDiff(client, roomId, prNumber) {
   for (const filePath of allFiles) {
     const sourceContent = sourceTree[filePath]
     const targetContent = targetTree[filePath]
+    const baseContent = baseTree[filePath] ?? targetContent ?? ''
 
     if (sourceContent === targetContent) continue
 
@@ -214,9 +224,9 @@ export async function getPullRequestDiff(client, roomId, prNumber) {
       })
       totalDeletions += targetContent.split(/\r?\n/).length
     } else {
-      // Modified in both or one
+      // Modified in one or both
       const diff = formatUnifiedDiff(filePath, targetContent, sourceContent)
-      const merge = threeWayMerge('', targetContent, sourceContent)
+      const merge = threeWayMerge(baseContent, targetContent, sourceContent)
       if (merge.hasConflict) hasMergeConflict = true
 
       fileDiffs.push({
