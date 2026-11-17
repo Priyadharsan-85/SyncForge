@@ -29,6 +29,7 @@ type WorkspaceFile = { id: string; name: string; content: Y.Text }
 type ConnectionState = 'connecting' | 'connected' | 'offline'
 type JoinResponse = {
   ok: boolean
+  retryable?: boolean
   state?: Uint8Array
   members?: Member[]
   error?: string
@@ -125,6 +126,9 @@ function App() {
     const persistence = new IndexeddbPersistence(`syncforge:${roomId}`, doc)
     let joined = false
     let disposed = false
+    let joinRetryPending = false
+    let joinRetryDelay = 500
+    let joinRetryTimer: number | undefined
     let documentRevision = 0
     let retryDelay = 500
     let retryPending = false
@@ -221,6 +225,47 @@ function App() {
       }
     }
 
+    function scheduleJoinRetry() {
+      if (disposed || joinRetryTimer !== undefined || !socket.connected) return
+      joinRetryTimer = window.setTimeout(() => {
+        joinRetryTimer = undefined
+        joinRoom()
+      }, joinRetryDelay)
+      joinRetryDelay = Math.min(joinRetryDelay * 2, 5_000)
+    }
+
+    function joinRoom() {
+      if (!socket.connected) return
+      socket.emit('room:join', { roomId, name: name.trim() }, (response: JoinResponse) => {
+        if (!response.ok || !response.state) {
+          setError(response.error ?? 'Could not join this room.')
+          setConnection('offline')
+          if (response.retryable) {
+            joinRetryPending = true
+            scheduleJoinRetry()
+          } else {
+            joinRetryPending = false
+          }
+          return
+        }
+        if (joinRetryTimer !== undefined) {
+          window.clearTimeout(joinRetryTimer)
+          joinRetryTimer = undefined
+        }
+        joinRetryDelay = 500
+        if (joinRetryPending) {
+          joinRetryPending = false
+          setError('')
+        }
+        Y.applyUpdate(doc, response.state, socket)
+        joined = true
+        ensureInitialFile()
+        setConnection('connected')
+        setMembers(response.members ?? [])
+        sendDocument()
+      })
+    }
+
     const onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin !== socket && joined && socket.connected) {
         documentRevision += 1
@@ -244,24 +289,16 @@ function App() {
 
     socket.on('connect', () => {
       setConnection('connecting')
-      socket.emit('room:join', { roomId, name: name.trim() }, (response: JoinResponse) => {
-        if (!response.ok || !response.state) {
-          setError(response.error ?? 'Could not join this room.')
-          setConnection('offline')
-          return
-        }
-        Y.applyUpdate(doc, response.state, socket)
-        joined = true
-        ensureInitialFile()
-        setConnection('connected')
-        setMembers(response.members ?? [])
-        sendDocument()
-      })
+      joinRoom()
     })
 
     socket.on('connect_error', () => setConnection('offline'))
     socket.on('disconnect', () => {
       joined = false
+      if (joinRetryTimer !== undefined) {
+        window.clearTimeout(joinRetryTimer)
+        joinRetryTimer = undefined
+      }
       setConnection('offline')
     })
     socket.on('document:update', (update: Uint8Array) => {
@@ -273,6 +310,7 @@ function App() {
 
     return () => {
       disposed = true
+      if (joinRetryTimer !== undefined) window.clearTimeout(joinRetryTimer)
       if (retryTimer !== undefined) window.clearTimeout(retryTimer)
       doc.off('update', onDocumentUpdate)
       files.unobserve(refreshFiles)

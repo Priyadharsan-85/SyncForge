@@ -132,7 +132,11 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('presence:update', roomMembers)
     } catch (error) {
       console.error(`Could not join room ${roomId}:`, error)
-      reply({ ok: false, error: 'The workspace could not be loaded. Please try again.' })
+      reply({
+        ok: false,
+        retryable: Boolean(persistenceClient),
+        error: 'The workspace could not be loaded. Please try again.',
+      })
     }
   })
 

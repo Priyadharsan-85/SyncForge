@@ -151,6 +151,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   const roomId = `restart-${Date.now()}`
   let child
   let socket
+  let joinRetrySocket
   let redisClient
 
   const startServer = async () => {
@@ -173,6 +174,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   }
   t.after(async () => {
     socket?.disconnect()
+    joinRetrySocket?.disconnect()
     if (redisClient?.isOpen) await redisClient.quit()
     await stopServer()
   })
@@ -186,7 +188,7 @@ test('Redis-backed workspace recovers after restarting the server', {
 
   redisClient = createClient({ url: process.env.REDIS_TEST_URL })
   await redisClient.connect()
-  await redisClient.sendCommand(['CLIENT', 'PAUSE', '5000', 'ALL'])
+  await redisClient.sendCommand(['CLIENT', 'PAUSE', '9000', 'ALL'])
   const readinessStart = Date.now()
   const stalledReadiness = await fetch(`${url}/ready`)
   assert.equal(stalledReadiness.status, 503)
@@ -195,6 +197,14 @@ test('Redis-backed workspace recovers after restarting the server', {
     persistence: 'redis',
   })
   assert.ok(Date.now() - readinessStart < 1_600)
+
+  joinRetrySocket = await connect(url)
+  const retryRoomId = `retry-${Date.now()}`
+  const failedJoin = await new Promise((resolve) => {
+    joinRetrySocket.emit('room:join', { roomId: retryRoomId, name: 'Sam' }, resolve)
+  })
+  assert.equal(failedJoin.ok, false)
+  assert.equal(failedJoin.retryable, true)
 
   const failedUpdateStart = Date.now()
   const failedUpdate = await new Promise((resolve) => {
@@ -210,6 +220,9 @@ test('Redis-backed workspace recovers after restarting the server', {
   })
   assert.ok(Date.now() - failedUpdateStart < 4_500)
   await redisClient.quit()
+
+  const recoveredJoin = await joinRoom(joinRetrySocket, retryRoomId, 'Sam')
+  assert.equal(recoveredJoin.ok, true)
 
   const updateResult = await new Promise((resolve) => {
     socket.emit('document:update', {
