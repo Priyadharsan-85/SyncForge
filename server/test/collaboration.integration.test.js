@@ -426,7 +426,7 @@ test('Redis-backed workspace recovers after restarting the server', {
   await stopServer()
   await startServer()
 
-  socket = await connect(url)
+  socket = await connect(url, 'Alex')
   const restoredJoin = await joinRoom(socket, roomId, 'Alex')
   const restoredDoc = new Y.Doc()
   Y.applyUpdate(restoredDoc, restoredJoin.state)
@@ -476,11 +476,13 @@ test('presence includes members connected to different server instances', {
   const workspace = await createWorkspace(firstUrl, 'Alex', 'Presence test')
   const roomId = workspace.roomId
   const inviteToken = await createInvite(firstUrl, 'Alex', roomId)
-  await joinRoom(firstSocket, roomId, 'Impersonator')
-  await once(firstSocket, 'presence:update')
   const firstPresenceUpdate = once(firstSocket, 'presence:update')
+  const firstJoin = await joinRoom(firstSocket, roomId, 'Impersonator')
+  assert.equal(firstJoin.ok, true)
+  await firstPresenceUpdate
+  const secondPresenceUpdate = once(firstSocket, 'presence:update')
   const secondJoin = await requestJoin(secondSocket, roomId, 'Sam', inviteToken)
-  const [updatedMembers] = await firstPresenceUpdate
+  const [updatedMembers] = await secondPresenceUpdate
 
   assert.deepEqual(
     secondJoin.members.map((member) => member.name).sort(),
