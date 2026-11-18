@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a new feature or improvement for SyncForge.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: Describe the problem this feature would solve or the workflow it would improve.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you imagine the feature working.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you tried any workarounds? Are there other approaches worth exploring?
+    validations:
+      required: false
