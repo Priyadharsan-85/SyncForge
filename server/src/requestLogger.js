@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto'
 
-const isProduction = process.env.NODE_ENV === 'production'
-
 /**
  * Lightweight request logging middleware.
  * In development: logs method, path, status, and duration to stdout.
@@ -16,7 +14,7 @@ export function requestLogger(request, response, next) {
 
   response.on('finish', () => {
     const path = request.path ?? request.url ?? ''
-    if (isProduction && (path === '/health' || path === '/ready')) return
+    if (process.env.NODE_ENV === 'production' && (path === '/health' || path === '/ready')) return
 
     const duration = Date.now() - start
     const level = response.statusCode >= 500 ? 'ERROR' : response.statusCode >= 400 ? 'WARN' : 'INFO'
