@@ -614,6 +614,37 @@ function App() {
     setShowNewFile(true)
   }
 
+  function deleteWorkspaceFile(fileId: string, fileName: string, event: React.MouseEvent) {
+    event.stopPropagation()
+    const fileMap = filesRef.current
+    if (!fileMap) return
+    if (workspaceFiles.length <= 1) {
+      setError('Cannot delete the last file in a workspace.')
+      return
+    }
+    if (!confirm(`Delete "${fileName}"? This cannot be undone.`)) return
+    fileMap.delete(fileId)
+  }
+
+  function startRenameFile(fileId: string, currentName: string, event: React.MouseEvent) {
+    event.stopPropagation()
+    const fileMap = filesRef.current
+    if (!fileMap) return
+    const nextName = window.prompt('Rename file to:', currentName)
+    if (!nextName || nextName.trim() === currentName) return
+    const name = nextName.trim()
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(name) || name === '.' || name === '..') {
+      setError('Use 1–64 letters, numbers, dots, dashes or underscores.')
+      return
+    }
+    if (readWorkspaceFiles(fileMap).some((f) => f.id !== fileId && f.name.toLowerCase() === name.toLowerCase())) {
+      setError('A file with that name already exists.')
+      return
+    }
+    const record = fileMap.get(fileId)
+    if (record) record.set('name', name)
+  }
+
   function createWorkspaceFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const fileMap = filesRef.current
@@ -904,15 +935,37 @@ function App() {
           <div className="folder-row"><ChevronDown size={14} /><span>SYNCFORGE</span></div>
           <div className="file-list">
             {workspaceFiles.map((file) => (
-              <button
-                className={`file-row${file.id === activeFileId ? ' active' : ''}`}
+              <div
                 key={file.id}
-                onClick={() => setActiveFileId(file.id)}
-                title={file.name}
+                className={`file-row-wrapper${file.id === activeFileId ? ' active' : ''}`}
               >
-                <FileCode2 size={15} />
-                <span>{file.name}</span>
-              </button>
+                <button
+                  className={`file-row${file.id === activeFileId ? ' active' : ''}`}
+                  onClick={() => setActiveFileId(file.id)}
+                  title={file.name}
+                >
+                  <FileCode2 size={15} />
+                  <span>{file.name}</span>
+                </button>
+                <div className="file-row-actions">
+                  <button
+                    className="file-action-btn"
+                    onClick={(e) => startRenameFile(file.id, file.name, e)}
+                    title="Rename file"
+                    aria-label={`Rename ${file.name}`}
+                  >
+                    <span style={{ fontSize: 10 }}>✎</span>
+                  </button>
+                  <button
+                    className="file-action-btn file-delete-btn"
+                    onClick={(e) => deleteWorkspaceFile(file.id, file.name, e)}
+                    title="Delete file"
+                    aria-label={`Delete ${file.name}`}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
           <div className="sidebar-bottom">
