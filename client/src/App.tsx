@@ -18,6 +18,7 @@ import {
   Plus,
   Radio,
   Sparkles,
+  Trash2,
   Users,
   Wifi,
   WifiOff,
@@ -32,6 +33,7 @@ import {
   readProjectZip,
   type ProjectFileReadResult,
 } from './projectFiles'
+import { WorkspaceCardSkeleton } from './LoadingSkeleton'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -124,6 +126,7 @@ function App() {
   const [authError, setAuthError] = useState('')
   const [roomId, setRoomId] = useState(roomFromUrl ?? '')
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspacesLoading, setWorkspacesLoading] = useState(false)
   const [workspaceRole, setWorkspaceRole] = useState<Workspace['role'] | ''>('')
   const [members, setMembers] = useState<Member[]>([])
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([])
@@ -178,6 +181,7 @@ function App() {
   useEffect(() => {
     if (!user || roomId) return
     let active = true
+    setWorkspacesLoading(true)
     fetch('/api/workspaces', { cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) throw new Error('Could not load your workspaces.')
@@ -188,6 +192,9 @@ function App() {
       })
       .catch(() => {
         if (active) setError('Could not load your workspaces. Check your connection and retry.')
+      })
+      .finally(() => {
+        if (active) setWorkspacesLoading(false)
       })
     return () => { active = false }
   }, [roomId, user])
@@ -632,6 +639,21 @@ function App() {
     setShowNewFile(false)
   }
 
+  async function deleteWorkspaceById(workspace: Workspace, event: React.MouseEvent) {
+    event.stopPropagation()
+    if (!confirm(`Delete workspace "${workspace.name}"? This cannot be undone.`)) return
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.roomId}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const result = await response.json() as { error?: string }
+        throw new Error(result.error ?? 'Could not delete the workspace.')
+      }
+      setWorkspaces((prev) => prev.filter((w) => w.roomId !== workspace.roomId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the workspace.')
+    }
+  }
+
   async function copyInvite() {
     try {
       const { inviteUrl } = await postJson<{ inviteUrl: string }>(
@@ -732,26 +754,46 @@ function App() {
                   <h2>Your workspaces</h2>
                   <span>{workspaces.length}</span>
                 </div>
-                {workspaces.length === 0 ? (
+                {workspacesLoading ? (
+                  <>
+                    <WorkspaceCardSkeleton />
+                    <WorkspaceCardSkeleton />
+                    <WorkspaceCardSkeleton />
+                  </>
+                ) : workspaces.length === 0 ? (
                   <p className="empty-workspaces">Create or import a project to get started. Invited workspaces will appear here.</p>
                 ) : workspaces.map((workspace) => (
-                  <button
-                    className="workspace-card"
+                  <div
+                    className="workspace-card-wrapper"
                     key={workspace.roomId}
-                    onClick={() => openWorkspace(workspace.roomId)}
                   >
-                    <span className="workspace-card-icon"><Code2 size={17} /></span>
-                    <span className="workspace-card-copy">
-                      <b>{workspace.name}</b>
-                      <small>
-                        {workspace.source.type === 'github'
-                          ? `GitHub · ${workspace.source.repository}`
-                          : workspace.source.type === 'local' ? 'Imported from this device' : 'SyncForge workspace'}
-                      </small>
-                    </span>
-                    <span className="workspace-role">{workspace.role}</span>
-                    <ArrowUpRight size={15} />
-                  </button>
+                    <button
+                      className="workspace-card"
+                      onClick={() => openWorkspace(workspace.roomId)}
+                    >
+                      <span className="workspace-card-icon"><Code2 size={17} /></span>
+                      <span className="workspace-card-copy">
+                        <b>{workspace.name}</b>
+                        <small>
+                          {workspace.source.type === 'github'
+                            ? `GitHub · ${workspace.source.repository}`
+                            : workspace.source.type === 'local' ? 'Imported from this device' : 'SyncForge workspace'}
+                        </small>
+                      </span>
+                      <span className="workspace-role">{workspace.role}</span>
+                      <ArrowUpRight size={15} />
+                    </button>
+                    {workspace.role === 'owner' && (
+                      <button
+                        className="workspace-delete-btn"
+                        onClick={(e) => deleteWorkspaceById(workspace, e)}
+                        title="Delete workspace"
+                        aria-label={`Delete workspace ${workspace.name}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </section>

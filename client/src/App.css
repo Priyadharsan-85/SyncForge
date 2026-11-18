@@ -313,6 +313,40 @@
   cursor: pointer;
 }
 
+.workspace-card-wrapper {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, .055);
+}
+
+.workspace-card-wrapper .workspace-card {
+  border-top: 0;
+  flex: 1;
+}
+
+.workspace-delete-btn {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 5px;
+  color: #666877;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  opacity: 0;
+}
+
+.workspace-card-wrapper:hover .workspace-delete-btn {
+  opacity: 1;
+}
+
+.workspace-delete-btn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
 .workspace-card:hover .workspace-card-copy b {
   color: var(--accent);
 }
