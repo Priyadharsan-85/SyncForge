@@ -66,6 +66,7 @@ import {
   exportPullRequestAsPatch,
   getGitHubWorkflowStatus,
 } from './githubWorkflow.js'
+import { requestLogger } from './requestLogger.js'
 
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -188,6 +189,9 @@ async function createWorkspaceRecord({ owner, name, source, contributors = [], f
 
 const app = express()
 
+// Request logging
+app.use(requestLogger)
+
 // Security headers
 app.use((_request, response, next) => {
   response.set('X-Content-Type-Options', 'nosniff')
@@ -202,6 +206,7 @@ app.use((_request, response, next) => {
 
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
 app.use(express.json({ limit: '13mb' }))
+
 app.get('/auth/me', (request, response) => {
   const session = verifySessionToken(
     readCookie(request.headers.cookie, SESSION_COOKIE_NAME),
