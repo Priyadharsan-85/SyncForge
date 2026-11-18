@@ -1,9 +1,19 @@
-## What changed?
+## Summary
 
-## How was it tested?
+<!-- One paragraph explaining what this PR changes and why. -->
 
-## User impact
+## Type of change
 
-- [ ] This changes a user-visible flow.
-- [ ] This adds or updates tests.
-- [ ] This changes configuration or deployment behavior.
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Refactor / code quality
+- [ ] Documentation
+- [ ] CI / build
+
+## Checklist
+
+- [ ] `npm test` passes locally
+- [ ] `npm run lint` passes (client)
+- [ ] New behaviour is covered by tests
+- [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] No secrets, tokens, or personal data are included
