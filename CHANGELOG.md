@@ -13,10 +13,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Workspace delete endpoint (owner only) with Yjs document cleanup
 - Workspace rename endpoint (owner only)
 - File delete and rename in the collaborative workspace sidebar
+- File filter/search input in the workspace sidebar
 - Keyboard shortcuts: `Ctrl/Cmd+Shift+N` (new file), `+A` (AI), `+B` (branches), `+I` (invite)
+- Keyboard shortcuts help panel accessible from the sidebar help button
 - React `ErrorBoundary` with recovery UI wrapping the entire application
 - Loading skeleton components for workspace list and file sidebar
+- Animated toast notification component replacing static alert banners
 - Security HTTP response headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` (production)
+- Structured JSON request logging middleware with request IDs
+- In-process metrics collector with per-counter tracking
 - `Dockerfile` and `docker-compose.yml` for containerised deployment
 - Nginx configuration with proxy rules and long-lived asset caching
 - GitHub Actions Docker build-and-push workflow targeting GHCR
@@ -26,9 +31,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `CONTRIBUTING.md`, `SECURITY.md`, and `LICENSE` (MIT)
 - `robots.txt`, Open Graph, and Twitter Card meta tags
 - `CHANGELOG.md` (this file)
+- GitHub feature request and PR templates
+
+### Tests added (167 passing, 2 skipped)
+- Workspace rename and delete lifecycle tests
+- Workspace management integration tests
+- Diff/patch edge cases (CRLF, empty strings, multi-hunk)
+- Branch edge cases (validation, tree hash, commit limits)
+- Pull request edge cases (filtering, lifecycle, diff reporting)
+- AI assistant edge cases (checksum, code generation, draft lifecycle)
+- Auth edge cases (token validation, cookie parsing, path safety)
+- Validation edge cases (roomId, displayName, file import)
+- Workspace sync edge cases (apply, remove, mixed ops)
+- Rate limit edge cases (actor/scope isolation, validation)
+- Request logger unit tests
+- Metrics module unit tests
 
 ### Fixed
 - `workspaceAccess.test.js` refactored to use unique room IDs per test to prevent cross-test state leakage
+- Request logger now reads `NODE_ENV` dynamically instead of at module load time
 
 ---
 
