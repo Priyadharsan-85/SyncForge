@@ -36,6 +36,7 @@ import {
   getWorkspaceAccess,
   getWorkspaceMember,
   listUserWorkspaces,
+  renameWorkspace,
 } from './workspaceAccess.js'
 import {
   createDraftPatch,
@@ -186,6 +187,19 @@ async function createWorkspaceRecord({ owner, name, source, contributors = [], f
 }
 
 const app = express()
+
+// Security headers
+app.use((_request, response, next) => {
+  response.set('X-Content-Type-Options', 'nosniff')
+  response.set('X-Frame-Options', 'SAMEORIGIN')
+  response.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  response.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  if (process.env.NODE_ENV === 'production') {
+    response.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+  }
+  next()
+})
+
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
 app.use(express.json({ limit: '13mb' }))
 app.get('/auth/me', (request, response) => {
@@ -401,6 +415,79 @@ app.post('/api/workspaces/:roomId/invites', async (request, response) => {
   } catch (error) {
     console.error(`Could not create invite for workspace ${roomId}:`, error)
     response.status(503).json({ error: 'Could not create an invite. Try again.' })
+  }
+})
+
+// --- Workspace management endpoints ---
+app.patch('/api/workspaces/:roomId', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  const { roomId } = request.params
+  if (!isValidRoomId(roomId)) {
+    response.status(400).json({ error: 'The workspace ID is invalid.' })
+    return
+  }
+  try {
+    const member = await getWorkspaceMember(persistenceClient, roomId, user.id)
+    if (!member) {
+      response.status(404).json({ error: 'Workspace not found.' })
+      return
+    }
+    if (member.role !== 'owner') {
+      response.status(403).json({ error: 'Only the workspace owner can rename it.' })
+      return
+    }
+    const newName = workspaceName(request.body?.name, null)
+    if (!newName) {
+      response.status(400).json({ error: 'A non-empty name is required.' })
+      return
+    }
+    await renameWorkspace(persistenceClient, roomId, newName)
+    response.json({ ok: true, name: newName })
+  } catch (error) {
+    console.error(`Could not rename workspace ${roomId}:`, error)
+    response.status(503).json({ error: 'Could not rename the workspace. Try again.' })
+  }
+})
+
+app.delete('/api/workspaces/:roomId', async (request, response) => {
+  const user = getAuthenticatedUser(request, response, true)
+  if (!user) return
+  const { roomId } = request.params
+  if (!isValidRoomId(roomId)) {
+    response.status(400).json({ error: 'The workspace ID is invalid.' })
+    return
+  }
+  try {
+    const [workspace, member] = await Promise.all([
+      getWorkspace(persistenceClient, roomId),
+      getWorkspaceMember(persistenceClient, roomId, user.id),
+    ])
+    if (!workspace || !member) {
+      response.status(404).json({ error: 'Workspace not found.' })
+      return
+    }
+    if (member.role !== 'owner') {
+      response.status(403).json({ error: 'Only the workspace owner can delete it.' })
+      return
+    }
+    await deleteWorkspace(persistenceClient, roomId)
+    if (persistenceClient) {
+      await deleteRoomDocument(persistenceClient, roomId).catch((err) => {
+        console.error(`Could not delete document for workspace ${roomId}:`, err)
+      })
+    }
+    // Evict any in-memory room
+    const loading = rooms.get(roomId)
+    if (loading) {
+      rooms.delete(roomId)
+      loading.then((doc) => doc.destroy()).catch(() => {})
+    }
+    io.to(roomId).emit('room:error', 'This workspace has been deleted by the owner.')
+    response.status(204).end()
+  } catch (error) {
+    console.error(`Could not delete workspace ${roomId}:`, error)
+    response.status(503).json({ error: 'Could not delete the workspace. Try again.' })
   }
 })
 

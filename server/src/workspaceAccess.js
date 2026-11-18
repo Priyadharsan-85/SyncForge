@@ -218,6 +218,27 @@ export async function redeemWorkspaceInvite(client, roomId, user, token) {
   return { ...member, role }
 }
 
+export async function renameWorkspace(client, roomId, newName) {
+  if (!client) {
+    const workspace = memoryWorkspaces.get(roomId)
+    if (!workspace) throw new Error('Workspace not found.')
+    workspace.metadata.name = newName
+    return
+  }
+  const raw = await withRedisTimeout(
+    client.get(workspaceMetaKey(roomId)),
+    'Workspace lookup timed out',
+  )
+  if (!raw) throw new Error('Workspace not found.')
+  const metadata = parseJson(raw, `workspace ${roomId}`)
+  metadata.name = newName
+  await withRedisTimeout(
+    client.set(workspaceMetaKey(roomId), JSON.stringify(metadata)),
+    'Workspace rename timed out',
+  )
+}
+
+
 export async function getWorkspaceAccess(client, roomId, user, inviteToken) {
   if (!await getWorkspace(client, roomId)) return null
   const existing = await getWorkspaceMember(client, roomId, user.id)
