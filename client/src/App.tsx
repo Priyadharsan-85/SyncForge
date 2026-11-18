@@ -148,6 +148,7 @@ function App() {
   const [showNewFile, setShowNewFile] = useState(false)
   const [newFileName, setNewFileName] = useState('')
   const [fileNameError, setFileNameError] = useState('')
+  const [fileFilter, setFileFilter] = useState('')
   const [showAiModal, setShowAiModal] = useState(false)
   const [showBranchModal, setShowBranchModal] = useState(false)
   const [activeBranch, setActiveBranch] = useState('main')
@@ -584,6 +585,7 @@ function App() {
     setShowAiModal(false)
     setShowBranchModal(false)
     setActiveBranch('main')
+    setFileFilter('')
     window.history.replaceState(null, '', window.location.pathname)
   }
 
@@ -936,7 +938,7 @@ function App() {
             <button
               className="subtle-icon"
               aria-label="Add file"
-              title="Create a file"
+              title="Create a file (Ctrl+Shift+N)"
               onClick={openNewFileDialog}
               disabled={!localReady}
             >
@@ -944,8 +946,20 @@ function App() {
             </button>
           </div>
           <div className="folder-row"><ChevronDown size={14} /><span>SYNCFORGE</span></div>
+          <div className="sidebar-search">
+            <input
+              type="search"
+              className="sidebar-search-input"
+              placeholder="Filter files…"
+              value={fileFilter}
+              onChange={(e) => setFileFilter(e.target.value)}
+              aria-label="Filter workspace files"
+            />
+          </div>
           <div className="file-list">
-            {workspaceFiles.map((file) => (
+            {workspaceFiles
+              .filter((file) => !fileFilter || file.name.toLowerCase().includes(fileFilter.toLowerCase()))
+              .map((file) => (
               <div
                 key={file.id}
                 className={`file-row-wrapper${file.id === activeFileId ? ' active' : ''}`}
