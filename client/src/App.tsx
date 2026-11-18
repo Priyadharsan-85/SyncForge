@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useCallback, type ChangeEvent, type FormEvent } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { io } from 'socket.io-client'
@@ -34,6 +34,7 @@ import {
   type ProjectFileReadResult,
 } from './projectFiles'
 import { WorkspaceCardSkeleton } from './LoadingSkeleton'
+import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -698,6 +699,16 @@ function App() {
       setError('Could not create or copy an invite link. Try again.')
     }
   }
+
+  const shortcutHandlers = useCallback(() => ({
+    onNewFile: () => { if (!!roomId) openNewFileDialog() },
+    onToggleAi: () => { if (!!roomId && !!activeFile) setShowAiModal((v) => !v) },
+    onToggleBranch: () => { if (!!roomId) setShowBranchModal((v) => !v) },
+    onCopyInvite: () => { if (!!roomId && workspaceRole === 'owner') copyInvite() },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [roomId, activeFile, workspaceRole])
+
+  useKeyboardShortcuts(shortcutHandlers(), !!roomId && !!user)
 
   if (authLoading) {
     return <main className="auth-loading" role="status">Checking your SyncForge session…</main>
