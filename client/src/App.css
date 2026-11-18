@@ -2335,6 +2335,85 @@
   color: #a78bfa;
 }
 
+/* ── Error Boundary ─────────────────────────────────────────────────────── */
+
+.error-boundary-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--bg);
+  padding: 24px;
+}
+
+.error-boundary-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 420px;
+  text-align: center;
+  padding: 40px 32px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .03);
+}
+
+.error-boundary-icon {
+  color: #f87171;
+  opacity: 0.9;
+}
+
+.error-boundary-card h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.error-boundary-message {
+  font-size: 13px;
+  color: #9ca3af;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+/* ── Loading Skeletons ───────────────────────────────────────────────────── */
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, .05) 25%,
+    rgba(255, 255, 255, .10) 50%,
+    rgba(255, 255, 255, .05) 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s infinite linear;
+}
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skeleton-file {
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+}
+
+
 
 
 
