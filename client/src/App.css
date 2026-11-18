@@ -2585,6 +2585,97 @@
   color: #c3f56b;
 }
 
+/* ── Keyboard Shortcuts Help ─────────────────────────────────────────────── */
+
+.shortcuts-panel {
+  width: min(90vw, 480px);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  background: #14151c;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+  overflow: hidden;
+}
+
+.shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.shortcuts-title-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #dedfe6;
+}
+
+.shortcuts-title-group h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shortcuts-body {
+  padding: 12px 20px 20px;
+}
+
+.shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcuts-table tr {
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+
+.shortcuts-table tr:last-child {
+  border-bottom: 0;
+}
+
+.shortcuts-keys {
+  padding: 10px 16px 10px 0;
+  white-space: nowrap;
+}
+
+.shortcuts-desc {
+  padding: 10px 0;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid #3a3c4a;
+  border-radius: 4px;
+  background: #1f2029;
+  color: #c8c9d6;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.kbd-plus {
+  margin: 0 3px;
+  color: #666877;
+  font-size: 11px;
+}
+
+.sidebar-help-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.sidebar-help-btn:hover {
+  color: var(--accent);
+}
+
 
 
 

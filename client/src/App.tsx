@@ -36,6 +36,7 @@ import {
 import { WorkspaceCardSkeleton } from './LoadingSkeleton'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { ToastContainer } from './Toast'
+import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -152,6 +153,7 @@ function App() {
   const [fileFilter, setFileFilter] = useState('')
   const [showAiModal, setShowAiModal] = useState(false)
   const [showBranchModal, setShowBranchModal] = useState(false)
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
   const [activeBranch, setActiveBranch] = useState('main')
   const textRef = useRef<Y.Text | null>(null)
   const filesRef = useRef<Y.Map<Y.Map<unknown>> | null>(null)
@@ -995,7 +997,15 @@ function App() {
             ))}
           </div>
           <div className="sidebar-bottom">
-            <div className="sidebar-bottom-icon"><CircleHelp size={16} /></div>
+            <button
+              type="button"
+              className="sidebar-bottom-icon sidebar-help-btn"
+              onClick={() => setShowShortcutsHelp(true)}
+              title="Keyboard shortcuts"
+              aria-label="Show keyboard shortcuts"
+            >
+              <CircleHelp size={16} />
+            </button>
             <span><b>Split the work</b><small>Open separate files to collaborate.</small></span>
           </div>
         </aside>
@@ -1183,6 +1193,9 @@ function App() {
           onBranchSelect={(branch) => setActiveBranch(branch)}
           onSyncLive={handleSyncLive}
         />
+      )}
+      {showShortcutsHelp && (
+        <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />
       )}
     </main>
   )
