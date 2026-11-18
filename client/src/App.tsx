@@ -35,6 +35,7 @@ import {
 } from './projectFiles'
 import { WorkspaceCardSkeleton } from './LoadingSkeleton'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
+import { ToastContainer } from './Toast'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -1061,7 +1062,12 @@ function App() {
               )}
             </div>
           )}
-          {workspaceNotice && <div className="workspace-alert" role="status">{workspaceNotice}</div>}
+          {workspaceNotice && (
+            <ToastContainer
+              message={workspaceNotice}
+              onDismiss={() => setWorkspaceNotice('')}
+            />
+          )}
           <footer className="editor-status">
             <span><span className={`status-dot ${connection}`} />{connection === 'connected' ? 'All changes synced' : 'Editing locally'}</span>
             <span>UTF-8</span>
