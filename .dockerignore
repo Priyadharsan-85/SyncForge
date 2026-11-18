@@ -1,7 +1,12 @@
+node_modules
+client/node_modules
+server/node_modules
+client/dist
 .git
 .env
-**/.env
-node_modules
-**/node_modules
-dist
-**/dist
+.env.*
+!.env.example
+*.log
+coverage
+.DS_Store
+Thumbs.db
