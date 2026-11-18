@@ -1,10 +1,41 @@
+# Dependencies
 node_modules/
 **/node_modules/
+
+# Build output
 dist/
 **/dist/
+*.tsbuildinfo
+
+# Environment — keep only the example
 .env
 .env.*
 !.env.example
+
+# Test coverage
 coverage/
+.c8output/
+
+# OS artifacts
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker volumes
+redis-data/
+
+# Temporary files
+*.tmp
+*.bak
