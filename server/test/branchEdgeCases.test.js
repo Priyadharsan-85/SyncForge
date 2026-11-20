@@ -9,6 +9,7 @@ import {
   computeTreeHash,
   createBranch,
   createCommit,
+  deleteBranch,
   getBranch,
   getBranchCommits,
   initWorkspaceBranches,
@@ -153,3 +154,48 @@ test('commit history is capped to the limit parameter', async () => {
   const historyAll = await getBranchCommits(null, roomId, 'main', 10)
   assert.equal(historyAll.length, 6) // initial + 5
 })
+
+test('deleteBranch successfully deletes a feature branch and updates listBranches', async () => {
+  const roomId = newRoom()
+  await initWorkspaceBranches(null, roomId, user)
+  await createBranch(null, { roomId, branchName: 'feature-to-delete', fromBranch: 'main', user })
+
+  const branchesBefore = await listBranches(null, roomId)
+  assert.ok(branchesBefore.some((b) => b.name === 'feature-to-delete'))
+
+  const result = await deleteBranch(null, roomId, 'feature-to-delete')
+  assert.equal(result.ok, true)
+  assert.equal(result.deletedBranch, 'feature-to-delete')
+
+  const branchesAfter = await listBranches(null, roomId)
+  assert.ok(!branchesAfter.some((b) => b.name === 'feature-to-delete'))
+  assert.ok(branchesAfter.some((b) => b.name === 'main'))
+})
+
+test('deleteBranch rejects deleting the main branch', async () => {
+  const roomId = newRoom()
+  await initWorkspaceBranches(null, roomId, user)
+  await assert.rejects(
+    () => deleteBranch(null, roomId, 'main'),
+    (err) => {
+      assert.ok(err instanceof BranchManagerError)
+      assert.equal(err.status, 400)
+      assert.ok(err.message.includes('main'))
+      return true
+    },
+  )
+})
+
+test('deleteBranch rejects non-existent branch with 404', async () => {
+  const roomId = newRoom()
+  await initWorkspaceBranches(null, roomId, user)
+  await assert.rejects(
+    () => deleteBranch(null, roomId, 'non-existent-branch'),
+    (err) => {
+      assert.ok(err instanceof BranchManagerError)
+      assert.equal(err.status, 404)
+      return true
+    },
+  )
+})
+
