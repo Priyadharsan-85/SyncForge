@@ -575,6 +575,43 @@ app.get('/api/workspaces/:roomId/stats', async (request, response) => {
   }
 })
 
+app.post('/api/workspaces/:roomId/fork', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+  if (!await enforceRateLimit(response, auth.user.id, 'workspace-create', 15)) return
+
+  try {
+    const sourceWorkspace = await getWorkspace(persistenceClient, roomId)
+    const doc = await getRoomDocument(roomId)
+    const sourceFiles = []
+    for (const [, record] of doc.getMap('files').entries()) {
+      const name = record.get('name')
+      const content = record.get('content')
+      if (typeof name === 'string' && content && typeof content.toString === 'function') {
+        sourceFiles.push({ path: name, content: content.toString() })
+      }
+    }
+
+    const forkName = workspaceName(
+      request.body?.name,
+      `Fork of ${sourceWorkspace?.name || 'workspace'}`,
+    )
+
+    const workspace = await createWorkspaceRecord({
+      owner: auth.user,
+      name: forkName,
+      source: { type: 'fork', originalRoomId: roomId },
+      files: sourceFiles.length > 0 ? sourceFiles : undefined,
+    })
+
+    response.status(201).json(workspace)
+  } catch (error) {
+    console.error(`Could not fork workspace ${roomId}:`, error)
+    response.status(503).json({ error: 'Could not fork the workspace. Try again.' })
+  }
+})
+
 // --- AI Assistant Draft Endpoints ---
 app.post('/api/workspaces/:roomId/ai/draft', async (request, response) => {
   const { roomId } = request.params
