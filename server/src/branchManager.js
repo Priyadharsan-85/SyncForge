@@ -325,3 +325,35 @@ export async function createCommit(client, {
   return newCommit
 }
 
+/**
+ * Delete a branch in a workspace. Main branch cannot be deleted.
+ */
+export async function deleteBranch(client, roomId, branchName) {
+  if (branchName === 'main') {
+    throw new BranchManagerError('The "main" branch cannot be deleted.', 400)
+  }
+  const branch = await getBranch(client, roomId, branchName)
+  if (!branch) {
+    throw new BranchManagerError(`Branch "${branchName}" not found.`, 404)
+  }
+
+  if (client) {
+    await withRedisTimeout(
+      client
+        .multi()
+        .sRem(branchesSetKey(roomId), branchName)
+        .del(branchKey(roomId, branchName))
+        .exec(),
+      'Failed to delete branch in Redis',
+    )
+  } else {
+    const roomBranches = memoryWorkspaceBranches.get(roomId)
+    if (roomBranches) {
+      roomBranches.delete(branchName)
+    }
+  }
+
+  return { ok: true, deletedBranch: branchName }
+}
+
+

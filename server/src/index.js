@@ -47,6 +47,7 @@ import {
 import {
   createBranch,
   createCommit,
+  deleteBranch,
   getBranch,
   getBranchCommits,
   initWorkspaceBranches,
@@ -628,6 +629,20 @@ app.post('/api/workspaces/:roomId/branches', async (request, response) => {
   } catch (error) {
     console.error('Could not create branch:', error)
     response.status(error.status || 500).json({ error: error.message || 'Could not create branch.' })
+  }
+})
+
+app.delete('/api/workspaces/:roomId/branches/:branch', async (request, response) => {
+  const { roomId, branch } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const result = await deleteBranch(persistenceClient, roomId, decodeURIComponent(branch))
+    response.json(result)
+  } catch (error) {
+    console.error('Could not delete branch:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not delete branch.' })
   }
 })
 
