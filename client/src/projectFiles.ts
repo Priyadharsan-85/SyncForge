@@ -1,7 +1,18 @@
-import { unzipSync } from 'fflate'
+import { unzipSync, zipSync, strToU8 } from 'fflate'
 
 export type ImportedProjectFile = { path: string; content: string }
 export type ProjectFileReadResult = { files: ImportedProjectFile[]; skipped: number }
+
+/**
+ * Export workspace files as a ZIP archive binary.
+ */
+export function exportWorkspaceZip(files: Array<{ name: string; content: string }>): Uint8Array {
+  const archiveEntries: Record<string, Uint8Array> = {}
+  for (const file of files) {
+    archiveEntries[file.name] = strToU8(file.content)
+  }
+  return zipSync(archiveEntries)
+}
 
 const MAX_FILE_COUNT = 300
 const MAX_FILE_BYTES = 512 * 1024

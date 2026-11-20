@@ -11,6 +11,7 @@ import {
   CircleHelp,
   Code2,
   Copy,
+  Download,
   FileCode2,
   GitBranch,
   Github,
@@ -29,6 +30,7 @@ import { AiAssistantModal } from './AiAssistantModal'
 import { BranchManagerModal } from './BranchManagerModal'
 import { bindYTextToMonaco } from './editorBinding'
 import {
+  exportWorkspaceZip,
   readProjectFolder,
   readProjectZip,
   type ProjectFileReadResult,
@@ -653,6 +655,28 @@ function App() {
     window.history.replaceState(null, '', window.location.pathname)
   }
 
+  function downloadWorkspaceZip() {
+    if (workspaceFiles.length === 0) return
+    try {
+      const zipData = exportWorkspaceZip(
+        workspaceFiles.map((f) => ({ name: f.name, content: f.content.toString() }))
+      )
+      const blob = new Blob([zipData.buffer as ArrayBuffer], { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const currentWorkspaceName = workspaces.find((w) => w.roomId === roomId)?.name ?? 'workspace'
+      a.download = `${currentWorkspaceName.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setWorkspaceNotice('Workspace exported as ZIP archive.')
+    } catch {
+      setError('Could not export workspace as ZIP.')
+    }
+  }
+
   function handleAcceptAiPatch(newContent: string) {
     if (!activeFile) return
     activeFile.content.delete(0, activeFile.content.length)
@@ -1001,6 +1025,16 @@ function App() {
         <aside className="sidebar">
           <div className="sidebar-heading">
             <span>EXPLORER</span>
+            <button
+              type="button"
+              className="subtle-icon"
+              aria-label="Export workspace as ZIP"
+              title="Download workspace ZIP"
+              onClick={downloadWorkspaceZip}
+              disabled={!localReady || workspaceFiles.length === 0}
+            >
+              <Download size={14} />
+            </button>
             <button
               className="subtle-icon"
               aria-label="Add file"
