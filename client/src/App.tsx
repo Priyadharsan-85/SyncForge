@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useMemo, type ChangeEvent, type FormEvent } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { io } from 'socket.io-client'
@@ -705,15 +705,15 @@ function App() {
     }
   }
 
-  const shortcutHandlers = useCallback(() => ({
-    onNewFile: () => { if (!!roomId) openNewFileDialog() },
-    onToggleAi: () => { if (!!roomId && !!activeFile) setShowAiModal((v) => !v) },
-    onToggleBranch: () => { if (!!roomId) setShowBranchModal((v) => !v) },
-    onCopyInvite: () => { if (!!roomId && workspaceRole === 'owner') copyInvite() },
+  const shortcutHandlers = useMemo(() => ({
+    onNewFile: () => { if (roomId) openNewFileDialog() },
+    onToggleAi: () => { if (roomId && activeFile) setShowAiModal((v) => !v) },
+    onToggleBranch: () => { if (roomId) setShowBranchModal((v) => !v) },
+    onCopyInvite: () => { if (roomId && workspaceRole === 'owner') void copyInvite() },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roomId, activeFile, workspaceRole])
 
-  useKeyboardShortcuts(shortcutHandlers(), !!roomId && !!user)
+  useKeyboardShortcuts(shortcutHandlers, !!roomId && !!user)
 
   if (authLoading) {
     return <main className="auth-loading" role="status">Checking your SyncForge session…</main>
@@ -878,7 +878,9 @@ function App() {
         </a>
         <div className="topbar-divider" />
         <div className="workspace-title">
-          <span className="workspace-title-name">Shared project</span>
+          <span className="workspace-title-name">
+            {workspaces.find((w) => w.roomId === roomId)?.name ?? 'Workspace'}
+          </span>
           <span className="workspace-room">ROOM / {roomId}</span>
         </div>
         <div className="topbar-divider" />
@@ -930,7 +932,7 @@ function App() {
           <LogOut size={16} />
         </button>
         <button className="icon-button leave-button" onClick={leaveRoom} aria-label="Leave workspace" title="Leave workspace">
-          <LogOut size={17} />
+          <X size={17} />
         </button>
       </header>
 
@@ -1115,11 +1117,6 @@ function App() {
           </button>
         </aside>
       </div>
-      <footer className="bottom-bar">
-        <span><span className={`status-dot ${connection}`} />{connection === 'connected' ? 'Connected' : connection === 'connecting' ? 'Connecting' : 'Offline mode'}</span>
-        <span>{localReady ? 'Local workspace ready' : 'Restoring local edits…'}</span>
-        <button onClick={leaveRoom}>Leave room</button>
-      </footer>
       {showNewFile && (
         <div
           className="dialog-backdrop"
