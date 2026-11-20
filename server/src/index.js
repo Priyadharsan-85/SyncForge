@@ -533,6 +533,48 @@ async function checkWorkspaceMember(request, response, roomId, requireEdit = fal
   return { user, member }
 }
 
+app.get('/api/workspaces/:roomId/stats', async (request, response) => {
+  const { roomId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const doc = await getRoomDocument(roomId)
+    const files = doc.getMap('files')
+    let filesCount = 0
+    let totalSizeBytes = 0
+
+    for (const [, record] of files.entries()) {
+      if (record && typeof record.get === 'function') {
+        filesCount++
+        const content = record.get('content')
+        if (content && typeof content.toString === 'function') {
+          totalSizeBytes += Buffer.byteLength(content.toString(), 'utf8')
+        }
+      }
+    }
+
+    const [branches, pulls] = await Promise.all([
+      listBranches(persistenceClient, roomId).catch(() => []),
+      listPullRequests(persistenceClient, roomId).catch(() => []),
+    ])
+
+    const openPulls = pulls.filter((p) => p.status === 'open').length
+
+    response.json({
+      roomId,
+      filesCount,
+      totalSizeBytes,
+      branchesCount: branches.length,
+      pullRequestsCount: pulls.length,
+      openPullRequestsCount: openPulls,
+    })
+  } catch (error) {
+    console.error('Could not get workspace stats:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get workspace stats.' })
+  }
+})
+
 // --- AI Assistant Draft Endpoints ---
 app.post('/api/workspaces/:roomId/ai/draft', async (request, response) => {
   const { roomId } = request.params
