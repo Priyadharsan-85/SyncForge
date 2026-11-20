@@ -67,6 +67,7 @@ import {
   getGitHubWorkflowStatus,
 } from './githubWorkflow.js'
 import { requestLogger } from './requestLogger.js'
+import { incrementCounter, getMetrics } from './metrics.js'
 
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -166,6 +167,7 @@ async function createWorkspaceRecord({ owner, name, source, contributors = [], f
       contributors,
     })
     workspaceStored = true
+    incrementCounter('roomsCreated')
     if (doc) {
       rooms.set(roomId, Promise.resolve(doc))
       documentStored = true
@@ -191,6 +193,17 @@ const app = express()
 
 // Request logging
 app.use(requestLogger)
+
+// In-process metrics tracking
+app.use((_request, response, next) => {
+  incrementCounter('requestsTotal')
+  response.on('finish', () => {
+    if (response.statusCode >= 500) {
+      incrementCounter('requestErrors')
+    }
+  })
+  next()
+})
 
 // Security headers
 app.use((_request, response, next) => {
@@ -857,6 +870,19 @@ app.get('/ready', async (_request, response) => {
   }
 })
 
+app.get('/metrics', (request, response) => {
+  if (process.env.NODE_ENV === 'production') {
+    const authHeader = request.get('authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const metricsToken = process.env.METRICS_TOKEN
+    if (!metricsToken || token !== metricsToken) {
+      response.status(401).json({ error: 'Unauthorized.' })
+      return
+    }
+  }
+  response.json(getMetrics())
+})
+
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: { origin: CLIENT_ORIGIN, credentials: true },
@@ -974,6 +1000,7 @@ function leaveCurrentRoom(socket) {
 }
 
 io.on('connection', (socket) => {
+  incrementCounter('wsConnections')
   socket.on('room:join', async (payload, acknowledge) => {
     const reply = typeof acknowledge === 'function' ? acknowledge : () => {}
     const roomId = typeof payload?.roomId === 'string' ? payload.roomId.trim() : ''
@@ -1111,7 +1138,10 @@ io.on('connection', (socket) => {
     reply({ ok: true })
   })
 
-  socket.on('disconnect', () => leaveCurrentRoom(socket))
+  socket.on('disconnect', () => {
+    incrementCounter('wsDisconnections')
+    leaveCurrentRoom(socket)
+  })
 })
 
 async function start() {

@@ -12,6 +12,7 @@ export default defineConfig({
       '/auth': serverUrl,
       '/health': serverUrl,
       '/ready': serverUrl,
+      '/metrics': serverUrl,
       '/socket.io': {
         target: serverUrl,
         ws: true,
