@@ -207,6 +207,8 @@ function App() {
   const [showBranchModal, setShowBranchModal] = useState(false)
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
   const [activeBranch, setActiveBranch] = useState('main')
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 })
+  const [charCount, setCharCount] = useState(0)
   const textRef = useRef<Y.Text | null>(null)
   const filesRef = useRef<Y.Map<Y.Map<unknown>> | null>(null)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
@@ -499,6 +501,13 @@ function App() {
   const onEditorMount: OnMount = (editor) => {
     const text = textRef.current
     editorRef.current = editor
+    editor.onDidChangeCursorPosition((e) => {
+      setCursorPos({ line: e.position.lineNumber, col: e.position.column })
+    })
+    editor.onDidChangeModelContent(() => {
+      setCharCount(editor.getValue().length)
+    })
+    setCharCount(editor.getValue().length)
     if (!text) return
     bindingRef.current?.()
     bindingRef.current = bindYTextToMonaco(text, editor)
@@ -1134,6 +1143,8 @@ function App() {
           )}
           <footer className="editor-status">
             <span><span className={`status-dot ${connection}`} />{connection === 'connected' ? 'All changes synced' : 'Editing locally'}</span>
+            <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+            <span>{charCount} chars</span>
             <span>UTF-8</span>
             <span>{activeFile ? languageForFile(activeFile.name) : 'JavaScript'}</span>
           </footer>
