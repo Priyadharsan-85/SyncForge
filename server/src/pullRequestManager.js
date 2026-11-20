@@ -18,6 +18,7 @@ export class PullRequestError extends Error {
 // In-memory PR store fallback
 const memoryPullRequests = new Map() // roomId -> Map<number, PRRecord>
 const memoryPrCounters = new Map() // roomId -> number
+const memoryPrComments = new Map() // roomId -> Map<number, Comment[]>
 
 function prKey(roomId, prNumber) {
   return `syncforge:workspace:${roomId}:pr:${prNumber}`
@@ -29,6 +30,10 @@ function prCounterKey(roomId) {
 
 function prListKey(roomId) {
   return `syncforge:workspace:${roomId}:prs`
+}
+
+function prCommentsKey(roomId, prNumber) {
+  return `syncforge:workspace:${roomId}:pr:${prNumber}:comments`
 }
 
 /**
@@ -333,3 +338,78 @@ export async function closePullRequest(client, { roomId, prNumber, user }) {
 
   return pr
 }
+
+/**
+ * Add a comment to a pull request.
+ */
+export async function addPullRequestComment(client, { roomId, prNumber, author, body }) {
+  const pr = await getPullRequest(client, roomId, prNumber)
+  if (!pr) {
+    throw new PullRequestError('Pull request not found.', 404)
+  }
+
+  if (typeof body !== 'string' || !body.trim()) {
+    throw new PullRequestError('A non-empty comment body is required.', 400)
+  }
+
+  if (body.trim().length > 2000) {
+    throw new PullRequestError('Comment cannot exceed 2,000 characters.', 400)
+  }
+
+  if (!author || !author.name) {
+    throw new PullRequestError('Author information is required.', 400)
+  }
+
+  const comment = {
+    commentId: randomUUID().replace(/-/g, ''),
+    prNumber: Number(prNumber),
+    roomId,
+    author: {
+      id: String(author.id),
+      name: author.name,
+      login: author.login,
+    },
+    body: body.trim(),
+    createdAt: new Date().toISOString(),
+  }
+
+  if (client) {
+    await withRedisTimeout(
+      client.rPush(prCommentsKey(roomId, prNumber), JSON.stringify(comment)),
+      'Failed to add PR comment in Redis',
+    )
+  } else {
+    if (!memoryPrComments.has(roomId)) {
+      memoryPrComments.set(roomId, new Map())
+    }
+    const roomComments = memoryPrComments.get(roomId)
+    if (!roomComments.has(Number(prNumber))) {
+      roomComments.set(Number(prNumber), [])
+    }
+    roomComments.get(Number(prNumber)).push(comment)
+  }
+
+  return comment
+}
+
+/**
+ * List comments for a pull request.
+ */
+export async function listPullRequestComments(client, roomId, prNumber) {
+  const pr = await getPullRequest(client, roomId, prNumber)
+  if (!pr) {
+    throw new PullRequestError('Pull request not found.', 404)
+  }
+
+  if (client) {
+    const rawList = await withRedisTimeout(
+      client.lRange(prCommentsKey(roomId, prNumber), 0, -1),
+      'Failed to list PR comments from Redis',
+    )
+    return (rawList || []).map((raw) => JSON.parse(raw))
+  }
+
+  const roomComments = memoryPrComments.get(roomId)
+  return roomComments?.get(Number(prNumber)) ? [...roomComments.get(Number(prNumber))] : []
+}
+

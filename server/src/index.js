@@ -56,10 +56,12 @@ import {
   listBranches,
 } from './branchManager.js'
 import {
+  addPullRequestComment,
   closePullRequest,
   createPullRequest,
   getPullRequest,
   getPullRequestDiff,
+  listPullRequestComments,
   listPullRequests,
   mergePullRequest,
 } from './pullRequestManager.js'
@@ -820,6 +822,40 @@ app.post('/api/workspaces/:roomId/pulls/:prNumber/close', async (request, respon
   } catch (error) {
     console.error('Could not close PR:', error)
     response.status(error.status || 500).json({ error: error.message || 'Could not close pull request.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/pulls/:prNumber/comments', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const comments = await listPullRequestComments(persistenceClient, roomId, Number(prNumber))
+    response.json(comments)
+  } catch (error) {
+    console.error('Could not list PR comments:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not list comments.' })
+  }
+})
+
+app.post('/api/workspaces/:roomId/pulls/:prNumber/comments', async (request, response) => {
+  const { roomId, prNumber } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, true)
+  if (!auth) return
+
+  try {
+    const { body } = request.body || {}
+    const comment = await addPullRequestComment(persistenceClient, {
+      roomId,
+      prNumber: Number(prNumber),
+      author: auth.user,
+      body,
+    })
+    response.status(201).json(comment)
+  } catch (error) {
+    console.error('Could not add PR comment:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not add comment.' })
   }
 })
 
