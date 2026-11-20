@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { withRedisTimeout } from './redisStore.js'
+import { formatUnifiedDiff, computeLineOperations } from './diffPatch.js'
 
 export class BranchManagerError extends Error {
   constructor(message, status = 400) {
@@ -355,5 +356,73 @@ export async function deleteBranch(client, roomId, branchName) {
 
   return { ok: true, deletedBranch: branchName }
 }
+
+/**
+ * Compute the diff of a commit against its parent commit.
+ */
+export async function getCommitDiff(client, roomId, commitId) {
+  const commit = await getCommit(client, roomId, commitId)
+  if (!commit) {
+    throw new BranchManagerError('Commit not found.', 404)
+  }
+
+  let parentTree = {}
+  if (commit.parentCommitId) {
+    const parentCommit = await getCommit(client, roomId, commit.parentCommitId)
+    if (parentCommit?.tree) {
+      parentTree = parentCommit.tree
+    }
+  }
+
+  const currentTree = commit.tree ?? {}
+  const allFiles = new Set([...Object.keys(parentTree), ...Object.keys(currentTree)])
+  const fileDiffs = []
+  let totalAdditions = 0
+  let totalDeletions = 0
+
+  for (const filePath of allFiles) {
+    const parentContent = parentTree[filePath]
+    const currentContent = currentTree[filePath]
+
+    if (parentContent === currentContent) continue
+
+    if (parentContent === undefined && currentContent !== undefined) {
+      const diff = formatUnifiedDiff(filePath, '', currentContent)
+      fileDiffs.push({ filePath, type: 'added', diff })
+      totalAdditions += currentContent ? currentContent.split(/\r?\n/).length : 0
+    } else if (currentContent === undefined && parentContent !== undefined) {
+      const diff = formatUnifiedDiff(filePath, parentContent, '')
+      fileDiffs.push({ filePath, type: 'deleted', diff })
+      totalDeletions += parentContent ? parentContent.split(/\r?\n/).length : 0
+    } else {
+      const diff = formatUnifiedDiff(filePath, parentContent ?? '', currentContent ?? '')
+      fileDiffs.push({ filePath, type: 'modified', diff })
+      const ops = computeLineOperations(parentContent ?? '', currentContent ?? '')
+      for (const op of ops) {
+        if (op.type === 'insert') totalAdditions++
+        if (op.type === 'delete') totalDeletions++
+      }
+    }
+  }
+
+  const diffText = fileDiffs.map((f) => f.diff).filter(Boolean).join('\n')
+
+  return {
+    commitId: commit.commitId,
+    parentCommitId: commit.parentCommitId,
+    message: commit.message,
+    author: commit.author,
+    timestamp: commit.timestamp,
+    treeHash: commit.treeHash,
+    stats: {
+      filesChanged: fileDiffs.length,
+      additions: totalAdditions,
+      deletions: totalDeletions,
+    },
+    fileDiffs,
+    diffText,
+  }
+}
+
 
 

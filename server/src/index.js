@@ -50,6 +50,8 @@ import {
   deleteBranch,
   getBranch,
   getBranchCommits,
+  getCommit,
+  getCommitDiff,
   initWorkspaceBranches,
   listBranches,
 } from './branchManager.js'
@@ -679,6 +681,38 @@ app.post('/api/workspaces/:roomId/branches/:branch/commits', async (request, res
   } catch (error) {
     console.error('Could not commit to branch:', error)
     response.status(error.status || 500).json({ error: error.message || 'Could not commit snapshot.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/commits/:commitId', async (request, response) => {
+  const { roomId, commitId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const commit = await getCommit(persistenceClient, roomId, commitId)
+    if (!commit) {
+      response.status(404).json({ error: 'Commit not found.' })
+      return
+    }
+    response.json(commit)
+  } catch (error) {
+    console.error('Could not get commit:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get commit.' })
+  }
+})
+
+app.get('/api/workspaces/:roomId/commits/:commitId/diff', async (request, response) => {
+  const { roomId, commitId } = request.params
+  const auth = await checkWorkspaceMember(request, response, roomId, false)
+  if (!auth) return
+
+  try {
+    const diff = await getCommitDiff(persistenceClient, roomId, commitId)
+    response.json(diff)
+  } catch (error) {
+    console.error('Could not get commit diff:', error)
+    response.status(error.status || 500).json({ error: error.message || 'Could not get commit diff.' })
   }
 })
 
