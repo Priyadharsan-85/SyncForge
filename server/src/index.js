@@ -72,6 +72,7 @@ import {
   getGitHubWorkflowStatus,
 } from './githubWorkflow.js'
 import { requestLogger } from './requestLogger.js'
+import { errorHandler, notFoundHandler } from './errorHandler.js'
 import {
   adjustGauge,
   getMetrics,
@@ -1073,6 +1074,12 @@ app.get('/metrics', (request, response) => {
   }
   response.json(getMetrics())
 })
+
+// Terminal middleware — must stay last so every route above can fall
+// through to them. Express 5 forwards rejected async route handlers here
+// automatically.
+app.use(notFoundHandler)
+app.use(errorHandler)
 
 const httpServer = createServer(app)
 const io = new Server(httpServer, {

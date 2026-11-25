@@ -9,8 +9,12 @@ export function requestLogger(request, response, next) {
   const id = randomUUID().slice(0, 8)
   const start = Date.now()
 
-  // Attach request ID for downstream error logging
+  // Attach request ID for downstream error logging, and echo it back so a
+  // caller can quote it when reporting a failure.
   request.id = id
+  // setHeader, not Express's res.set, so this middleware stays usable on a
+  // bare node:http response.
+  if (!response.headersSent) response.setHeader('X-Request-Id', id)
 
   response.on('finish', () => {
     const path = request.path ?? request.url ?? ''
