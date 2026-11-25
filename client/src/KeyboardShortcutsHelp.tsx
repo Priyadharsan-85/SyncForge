@@ -8,6 +8,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 const mod = isMac ? '⌘' : 'Ctrl'
 
 const shortcuts = [
+  { keys: `${mod}+K`, description: 'Open command palette' },
   { keys: `${mod}+Shift+N`, description: 'Create new file' },
   { keys: `${mod}+Shift+A`, description: 'Open AI Assistant' },
   { keys: `${mod}+Shift+B`, description: 'Open Branch Manager' },

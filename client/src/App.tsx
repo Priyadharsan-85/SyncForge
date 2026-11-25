@@ -12,12 +12,15 @@ import {
   Code2,
   Copy,
   Download,
+  FileArchive,
   FileCode2,
   GitBranch,
+  Keyboard,
   Github,
   LogOut,
   Plus,
   Radio,
+  Search,
   Sparkles,
   Trash2,
   Users,
@@ -39,6 +42,8 @@ import { WorkspaceCardSkeleton } from './LoadingSkeleton'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { ToastContainer } from './Toast'
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp'
+import { CommandPalette } from './CommandPalette'
+import type { Command } from './commandRanking'
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -173,6 +178,13 @@ function languageForFile(name: string): string {
   }
 }
 
+// navigator.platform is deprecated but is still the only reliable way to
+// tell a Mac from everything else without UA-CH, and this is cosmetic.
+const paletteShortcutLabel =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+    ? '⌘K'
+    : 'Ctrl+K'
+
 function equalBytes(left: Uint8Array, right: Uint8Array) {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
@@ -208,6 +220,7 @@ function App() {
   const [showAiModal, setShowAiModal] = useState(false)
   const [showBranchModal, setShowBranchModal] = useState(false)
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   const [activeBranch, setActiveBranch] = useState('main')
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 })
   const [charCount, setCharCount] = useState(0)
@@ -650,6 +663,7 @@ function App() {
     setShowNewFile(false)
     setShowAiModal(false)
     setShowBranchModal(false)
+    setShowPalette(false)
     setActiveBranch('main')
     setFileFilter('')
     window.history.replaceState(null, '', window.location.pathname)
@@ -829,7 +843,92 @@ function App() {
     }
   }
 
+  // Everything the palette can run: one entry per open file, then the
+  // workspace-level actions. Owner-only actions are filtered out for
+  // editors rather than shown and rejected.
+  const paletteCommands = useMemo<Command[]>(() => {
+    const fileCommands: Command[] = workspaceFiles.map((file) => ({
+      id: `file:${file.id}`,
+      label: file.name,
+      group: 'File',
+      hint: languageForFile(file.name),
+      keywords: 'open switch jump tab',
+      icon: <FileCode2 size={13} />,
+      run: () => setActiveFileId(file.id),
+    }))
+
+    const actionCommands: Command[] = [
+      {
+        id: 'action:new-file',
+        label: 'Create a new file',
+        group: 'Action',
+        hint: 'Ctrl+Shift+N',
+        keywords: 'add create touch',
+        icon: <Plus size={13} />,
+        run: () => openNewFileDialog(),
+      },
+      {
+        id: 'action:ai',
+        label: 'Open the AI assistant',
+        group: 'Action',
+        hint: 'Ctrl+Shift+A',
+        keywords: 'propose refactor jsdoc tests patch draft',
+        icon: <Sparkles size={13} />,
+        run: () => setShowAiModal(true),
+      },
+      {
+        id: 'action:branches',
+        label: 'Open branches and pull requests',
+        group: 'Action',
+        hint: 'Ctrl+Shift+B',
+        keywords: 'branch commit merge pr diff history',
+        icon: <GitBranch size={13} />,
+        run: () => setShowBranchModal(true),
+      },
+      {
+        id: 'action:export-zip',
+        label: 'Export the workspace as a ZIP archive',
+        group: 'Action',
+        keywords: 'download save archive backup',
+        icon: <FileArchive size={13} />,
+        run: () => downloadWorkspaceZip(),
+      },
+      {
+        id: 'action:shortcuts',
+        label: 'Show keyboard shortcuts',
+        group: 'Help',
+        keywords: 'keys bindings hotkeys',
+        icon: <Keyboard size={13} />,
+        run: () => setShowShortcutsHelp(true),
+      },
+      {
+        id: 'action:leave',
+        label: 'Leave this workspace',
+        group: 'Action',
+        keywords: 'exit close back dashboard',
+        icon: <LogOut size={13} />,
+        run: () => leaveRoom(),
+      },
+    ]
+
+    if (workspaceRole === 'owner') {
+      actionCommands.splice(3, 0, {
+        id: 'action:invite',
+        label: 'Copy an invite link',
+        group: 'Action',
+        hint: 'Ctrl+Shift+I',
+        keywords: 'share collaborator member link',
+        icon: <Users size={13} />,
+        run: () => void copyInvite(),
+      })
+    }
+
+    return [...fileCommands, ...actionCommands]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceFiles, workspaceRole, roomId])
+
   const shortcutHandlers = useMemo(() => ({
+    onTogglePalette: () => { if (roomId) setShowPalette((v) => !v) },
     onNewFile: () => { if (roomId) openNewFileDialog() },
     onToggleAi: () => { if (roomId && activeFile) setShowAiModal((v) => !v) },
     onToggleBranch: () => { if (roomId) setShowBranchModal((v) => !v) },
@@ -1173,6 +1272,16 @@ function App() {
             <div className="tabbar-spacer" />
             <button
               type="button"
+              className="tabbar-palette-button"
+              onClick={() => setShowPalette(true)}
+              title="Open the command palette"
+            >
+              <Search size={12} />
+              <span>Search</span>
+              <kbd className="kbd tabbar-kbd">{paletteShortcutLabel}</kbd>
+            </button>
+            <button
+              type="button"
               className="tabbar-ai-button"
               onClick={() => setShowAiModal(true)}
               disabled={!activeFile}
@@ -1347,6 +1456,9 @@ function App() {
       )}
       {showShortcutsHelp && (
         <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />
+      )}
+      {showPalette && (
+        <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
     </main>
   )

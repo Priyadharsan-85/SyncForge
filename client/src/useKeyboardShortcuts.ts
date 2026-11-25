@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 export interface ShortcutHandlers {
+  onTogglePalette?: () => void
   onNewFile?: () => void
   onToggleAi?: () => void
   onToggleBranch?: () => void
@@ -12,6 +13,7 @@ export interface ShortcutHandlers {
  * Register keyboard shortcuts for the workspace.
  * All shortcuts use the platform modifier key (Cmd on Mac, Ctrl elsewhere).
  *
+ * Ctrl/Cmd + K — command palette
  * Ctrl/Cmd + Shift + N — new file
  * Ctrl/Cmd + Shift + A — toggle AI assistant
  * Ctrl/Cmd + Shift + B — toggle branch manager
@@ -24,6 +26,14 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers, enabled: boolea
 
     function handleKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey
+
+      // Ctrl/Cmd+K has no Shift, so it is checked before the Shift block.
+      // Browsers bind it to the address bar, hence the preventDefault.
+      if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        handlers.onTogglePalette?.()
+        return
+      }
 
       if (mod && event.shiftKey) {
         switch (event.key.toUpperCase()) {
