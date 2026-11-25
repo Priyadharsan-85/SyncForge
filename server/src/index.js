@@ -72,7 +72,14 @@ import {
   getGitHubWorkflowStatus,
 } from './githubWorkflow.js'
 import { requestLogger } from './requestLogger.js'
-import { incrementCounter, getMetrics } from './metrics.js'
+import {
+  adjustGauge,
+  getMetrics,
+  incrementCounter,
+  observeHistogram,
+  renderPrometheus,
+  setGauge,
+} from './metrics.js'
 
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -138,6 +145,7 @@ async function enforceRateLimit(response, userId, scope, limit) {
       windowSeconds: 60 * 60,
     })
     if (result.allowed) return true
+    incrementCounter('rateLimitRejections')
     response.set('Retry-After', String(result.retryAfterSeconds))
     response.status(429).json({ error: "You have reached this action's hourly limit. Try again later." })
     return false
@@ -202,10 +210,15 @@ app.use(requestLogger)
 // In-process metrics tracking
 app.use((_request, response, next) => {
   incrementCounter('requestsTotal')
+  const startedAt = process.hrtime.bigint()
   response.on('finish', () => {
-    if (response.statusCode >= 500) {
-      incrementCounter('requestErrors')
-    }
+    observeHistogram(
+      'requestDurationSeconds',
+      Number(process.hrtime.bigint() - startedAt) / 1e9,
+    )
+    if (response.statusCode >= 500) incrementCounter('requestErrors')
+    else if (response.statusCode >= 400) incrementCounter('requestsClientError')
+    setGauge('roomsResident', rooms.size)
   })
   next()
 })
@@ -1044,6 +1057,20 @@ app.get('/metrics', (request, response) => {
       return
     }
   }
+
+  setGauge('roomsResident', rooms.size)
+
+  // Prometheus scrapers send `Accept: text/plain`; humans and dashboards can
+  // ask for the same data as JSON, which stays the default.
+  const wantsPrometheus =
+    request.query.format === 'prometheus' ||
+    (typeof request.get('accept') === 'string' && request.get('accept').includes('text/plain'))
+
+  if (wantsPrometheus) {
+    response.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+    response.send(renderPrometheus())
+    return
+  }
   response.json(getMetrics())
 })
 
@@ -1165,6 +1192,7 @@ function leaveCurrentRoom(socket) {
 
 io.on('connection', (socket) => {
   incrementCounter('wsConnections')
+  adjustGauge('wsConnectionsActive', 1)
   socket.on('room:join', async (payload, acknowledge) => {
     const reply = typeof acknowledge === 'function' ? acknowledge : () => {}
     const roomId = typeof payload?.roomId === 'string' ? payload.roomId.trim() : ''
@@ -1265,8 +1293,10 @@ io.on('connection', (socket) => {
         retryable = false
       }
       Y.applyUpdate(doc, update)
+      incrementCounter('documentUpdates')
       socket.to(roomId).emit('document:update', update)
     } catch (error) {
+      incrementCounter('documentUpdateErrors')
       console.error(`Could not persist or apply update for room ${roomId}:`, error)
       socket.emit('room:error', 'A document update could not be applied.')
       reply({
@@ -1304,6 +1334,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     incrementCounter('wsDisconnections')
+    adjustGauge('wsConnectionsActive', -1)
     leaveCurrentRoom(socket)
   })
 })
