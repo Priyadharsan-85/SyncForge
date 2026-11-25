@@ -73,6 +73,7 @@ import {
 } from './githubWorkflow.js'
 import { requestLogger } from './requestLogger.js'
 import { errorHandler, notFoundHandler } from './errorHandler.js'
+import { getBuildInfo } from './buildInfo.js'
 import {
   adjustGauge,
   getMetrics,
@@ -224,12 +225,28 @@ app.use((_request, response, next) => {
   next()
 })
 
+// This process serves JSON and WebSocket traffic only — it never returns a
+// document that should load a script, a style, or a frame. Locking the
+// policy down to 'none' means an injected payload in an error message or an
+// echoed field has no way to execute even if one slips through. The client
+// HTML gets its own, looser policy from nginx.
+const API_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+  "sandbox",
+].join('; ')
+
 // Security headers
 app.use((_request, response, next) => {
   response.set('X-Content-Type-Options', 'nosniff')
   response.set('X-Frame-Options', 'SAMEORIGIN')
   response.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   response.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  response.set('Content-Security-Policy', API_CONTENT_SECURITY_POLICY)
+  response.set('Cross-Origin-Resource-Policy', 'same-site')
+  response.set('X-Permitted-Cross-Domain-Policies', 'none')
   if (process.env.NODE_ENV === 'production') {
     response.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   }
@@ -1016,6 +1033,13 @@ app.post('/api/workspaces/:roomId/pulls/:prNumber/export-patch', async (request,
 
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok', collaboration: 'yjs' })
+})
+
+// Build identity: which commit is running, for how long, with which
+// optional subsystems enabled. Configuration is reported as booleans only.
+app.get('/api/version', (_request, response) => {
+  response.set('Cache-Control', 'no-store')
+  response.json(getBuildInfo())
 })
 app.get('/ready', async (_request, response) => {
   if (!persistenceClient) {
