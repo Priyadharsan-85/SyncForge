@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title description">
+  <title id="title">The SyncForge Redis keyspace</title>
+  <desc id="description">Reference diagram of every Redis key SyncForge writes, grouped into four families. Document state holds a Yjs snapshot string, a stream of updates, and a compaction checkpoint per room. Workspace and access holds workspace metadata, a members hash, hashed invite keys with a seven-day expiry, and a per-user set of workspaces. Version control holds a set of branch names, one key per branch head pointer, and one immutable key per commit. Review holds a pull request counter, a set of pull request numbers, one key per pull request, and a comment list per pull request. Operations covers rate-limit counters keyed by a hashed actor, and the document-updates pub/sub channel used to fan edits across server instances.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .faint { fill: #7a8699; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .mint { fill: #85d7ad; }
+      .blue { fill: #8bb4ff; }
+      .violet { fill: #c4b5fd; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .row { fill: #1d2330; }
+      .tag { fill: #263020; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="820" rx="28" fill="url(#background)"/>
+  <circle cx="1310" cy="50" r="190" fill="#c3f56b" opacity=".035"/>
+  <circle cx="70" cy="780" r="190" fill="#7ea8ff" opacity=".035"/>
+
+  <text x="54" y="54" class="mono lime" font-size="13" letter-spacing="2.5">SYNCFORGE / DATA MODEL</text>
+  <text x="54" y="98" class="sans bright" font-size="32" font-weight="700">Every key the server writes.</text>
+  <text x="54" y="126" class="sans muted" font-size="15">All four families are namespaced under <tspan class="mono lime">syncforge:</tspan> so a shared Redis stays tidy. Without <tspan class="mono">REDIS_URL</tspan>, the same shapes live in memory and vanish on restart.</text>
+
+  <!-- ── Document state ──────────────────────────────────────────────── -->
+  <rect x="54" y="158" width="650" height="234" rx="18" class="card"/>
+  <circle cx="82" cy="190" r="6" fill="#c3f56b"/>
+  <text x="98" y="195" class="sans bright" font-size="17" font-weight="700">Document state</text>
+  <text x="98" y="216" class="sans muted" font-size="12.5">The CRDT itself: one snapshot plus a replayable tail of updates.</text>
+
+  <rect x="76" y="232" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="252" class="mono lime" font-size="12.5">room:&lt;roomId&gt;</text>
+  <rect x="580" y="239" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="253" text-anchor="middle" class="mono lime" font-size="10">STRING</text>
+  <text x="94" y="270" class="sans muted" font-size="11.5">Compacted Yjs state — the base every reader starts from.</text>
+
+  <rect x="76" y="286" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="306" class="mono lime" font-size="12.5">room:&lt;roomId&gt;:updates</text>
+  <rect x="580" y="293" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="307" text-anchor="middle" class="mono lime" font-size="10">STREAM</text>
+  <text x="94" y="324" class="sans muted" font-size="11.5">Each accepted update, appended by XADD before any broadcast.</text>
+
+  <rect x="76" y="340" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="360" class="mono lime" font-size="12.5">room:&lt;roomId&gt;:checkpoint</text>
+  <rect x="580" y="347" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="361" text-anchor="middle" class="mono lime" font-size="10">STRING</text>
+  <text x="94" y="378" class="sans muted" font-size="11.5">How far the stream has been folded into the snapshot.</text>
+
+  <!-- ── Workspace & access ──────────────────────────────────────────── -->
+  <rect x="726" y="158" width="620" height="288" rx="18" class="card"/>
+  <circle cx="754" cy="190" r="6" fill="#85d7ad"/>
+  <text x="770" y="195" class="sans bright" font-size="17" font-weight="700">Workspace &amp; access</text>
+  <text x="770" y="216" class="sans muted" font-size="12.5">Who owns what, who may edit it, and how an invite is redeemed.</text>
+
+  <rect x="748" y="232" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="252" class="mono mint" font-size="12.5">workspace:&lt;roomId&gt;:meta</text>
+  <rect x="1222" y="239" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="253" text-anchor="middle" class="mono mint" font-size="10">STRING</text>
+  <text x="766" y="270" class="sans muted" font-size="11.5">Name, owner, source (blank · local import · GitHub), created time.</text>
+
+  <rect x="748" y="286" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="306" class="mono mint" font-size="12.5">workspace:&lt;roomId&gt;:members</text>
+  <rect x="1222" y="293" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="307" text-anchor="middle" class="mono mint" font-size="10">HASH</text>
+  <text x="766" y="324" class="sans muted" font-size="11.5">userId → { login, name, role }. The single source of truth for ACL.</text>
+
+  <rect x="748" y="340" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="360" class="mono mint" font-size="12.5">workspace:&lt;roomId&gt;:invite:&lt;sha256&gt;</text>
+  <rect x="1222" y="347" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="361" text-anchor="middle" class="mono mint" font-size="10">EX 7d</text>
+  <text x="766" y="378" class="sans muted" font-size="11.5">The token is hashed into the key, so Redis never stores the raw token.</text>
+
+  <rect x="748" y="394" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="414" class="mono mint" font-size="12.5">user:&lt;userId&gt;:workspaces</text>
+  <rect x="1222" y="401" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="415" text-anchor="middle" class="mono mint" font-size="10">SET</text>
+  <text x="766" y="432" class="sans muted" font-size="11.5">Reverse index that backs the dashboard listing.</text>
+
+  <!-- ── Version control ─────────────────────────────────────────────── -->
+  <rect x="54" y="412" width="650" height="234" rx="18" class="card"/>
+  <circle cx="82" cy="444" r="6" fill="#8bb4ff"/>
+  <text x="98" y="449" class="sans bright" font-size="17" font-weight="700">Version control</text>
+  <text x="98" y="470" class="sans muted" font-size="12.5">Branch pointers over an append-only set of immutable commits.</text>
+
+  <rect x="76" y="486" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="506" class="mono blue" font-size="12.5">workspace:&lt;roomId&gt;:branches</text>
+  <rect x="580" y="493" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="507" text-anchor="middle" class="mono blue" font-size="10">SET</text>
+  <text x="94" y="524" class="sans muted" font-size="11.5">Branch names that exist in this workspace.</text>
+
+  <rect x="76" y="540" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="560" class="mono blue" font-size="12.5">workspace:&lt;roomId&gt;:branch:&lt;name&gt;</text>
+  <rect x="580" y="547" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="561" text-anchor="middle" class="mono blue" font-size="10">STRING</text>
+  <text x="94" y="578" class="sans muted" font-size="11.5">Head pointer. Advanced by a Lua CAS on the expected parent.</text>
+
+  <rect x="76" y="594" width="606" height="46" rx="9" class="row"/>
+  <text x="94" y="614" class="mono blue" font-size="12.5">workspace:&lt;roomId&gt;:commit:&lt;commitId&gt;</text>
+  <rect x="580" y="601" width="86" height="19" rx="9" class="tag"/>
+  <text x="623" y="615" text-anchor="middle" class="mono blue" font-size="10">STRING</text>
+  <text x="94" y="632" class="sans muted" font-size="11.5">Whole file tree, tree hash, author, parent. Written once, never edited.</text>
+
+  <!-- ── Review ──────────────────────────────────────────────────────── -->
+  <rect x="726" y="466" width="620" height="288" rx="18" class="card"/>
+  <circle cx="754" cy="498" r="6" fill="#c4b5fd"/>
+  <text x="770" y="503" class="sans bright" font-size="17" font-weight="700">Review</text>
+  <text x="770" y="524" class="sans muted" font-size="12.5">Pull requests and their discussion, numbered per workspace.</text>
+
+  <rect x="748" y="540" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="560" class="mono violet" font-size="12.5">workspace:&lt;roomId&gt;:pr-counter</text>
+  <rect x="1222" y="547" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="561" text-anchor="middle" class="mono violet" font-size="10">INCR</text>
+  <text x="766" y="578" class="sans muted" font-size="11.5">Atomic counter, so two reviewers never claim the same PR number.</text>
+
+  <rect x="748" y="594" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="614" class="mono violet" font-size="12.5">workspace:&lt;roomId&gt;:prs</text>
+  <rect x="1222" y="601" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="615" text-anchor="middle" class="mono violet" font-size="10">SET</text>
+  <text x="766" y="632" class="sans muted" font-size="11.5">Every PR number ever opened here.</text>
+
+  <rect x="748" y="648" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="668" class="mono violet" font-size="12.5">workspace:&lt;roomId&gt;:pr:&lt;number&gt;</text>
+  <rect x="1222" y="655" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="669" text-anchor="middle" class="mono violet" font-size="10">STRING</text>
+  <text x="766" y="686" class="sans muted" font-size="11.5">Source, target, status (open · merged · closed), merge commit.</text>
+
+  <rect x="748" y="702" width="576" height="46" rx="9" class="row"/>
+  <text x="766" y="722" class="mono violet" font-size="12.5">workspace:&lt;roomId&gt;:pr:&lt;number&gt;:comments</text>
+  <rect x="1222" y="709" width="86" height="19" rx="9" class="tag"/>
+  <text x="1265" y="723" text-anchor="middle" class="mono violet" font-size="10">LIST</text>
+  <text x="766" y="740" class="sans muted" font-size="11.5">Append-only review thread.</text>
+
+  <!-- ── Operations ──────────────────────────────────────────────────── -->
+  <rect x="54" y="666" width="650" height="88" rx="18" class="card"/>
+  <circle cx="82" cy="698" r="6" fill="#ffd8a8"/>
+  <text x="98" y="703" class="sans bright" font-size="17" font-weight="700">Operations</text>
+  <text x="76" y="727" class="mono muted" font-size="12">rate-limit:&lt;scope&gt;:&lt;sha256(actor)&gt;</text>
+  <text x="380" y="727" class="sans faint" font-size="11.5">counter + TTL, one Lua round trip</text>
+  <text x="76" y="745" class="mono muted" font-size="12">document-updates</text>
+  <text x="380" y="745" class="sans faint" font-size="11.5">pub/sub channel — fans edits across instances</text>
+
+  <text x="54" y="790" class="mono faint" font-size="11" letter-spacing="2">SYNCFORGE  /  REDIS KEYSPACE REFERENCE</text>
+</svg>

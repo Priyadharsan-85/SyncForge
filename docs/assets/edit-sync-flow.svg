@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title description">
+  <title id="title">How a single keystroke reaches every collaborator</title>
+  <desc id="description">Sequence diagram. A keystroke in Monaco becomes a Yjs update, which is written to IndexedDB locally and sent to the server over Socket.IO. The server validates the update by replaying it into a throwaway document, appends it to a Redis stream, applies it to the authoritative room document, fans it out to other sockets in the room, and publishes it to Redis pub/sub so other server instances converge. Persistence always precedes broadcast, so no collaborator can see an edit that was not durably stored.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#91a2bc"/>
+    </marker>
+    <marker id="arrowAccent" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#c3f56b"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#8bb4ff"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .faint { fill: #7a8699; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .blue { fill: #8bb4ff; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .lifeline { stroke: #2b3242; stroke-width: 1.5; stroke-dasharray: 3 7; }
+      .connector { fill: none; stroke: #91a2bc; stroke-width: 2.2; marker-end: url(#arrow); }
+      .connector-accent { fill: none; stroke: #c3f56b; stroke-width: 2.2; marker-end: url(#arrowAccent); }
+      .connector-blue { fill: none; stroke: #8bb4ff; stroke-width: 2.2; marker-end: url(#arrowBlue); }
+      .step { fill: #1d2330; stroke: #3a4759; stroke-width: 1.2; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="780" rx="28" fill="url(#background)"/>
+  <circle cx="1300" cy="60" r="190" fill="#c3f56b" opacity=".035"/>
+  <circle cx="80" cy="720" r="200" fill="#7ea8ff" opacity=".035"/>
+
+  <text x="54" y="54" class="mono lime" font-size="13" letter-spacing="2.5">SYNCFORGE / EDIT PROPAGATION</text>
+  <text x="54" y="98" class="sans bright" font-size="32" font-weight="700">One keystroke, persisted before anyone sees it.</text>
+  <text x="54" y="126" class="sans muted" font-size="15">An update is only broadcast after it has been validated and durably appended — never the other way around.</text>
+
+  <!-- Lifeline headers -->
+  <rect x="64" y="152" width="216" height="76" rx="14" class="card"/>
+  <circle cx="88" cy="180" r="5" fill="#c3f56b"/>
+  <text x="102" y="184" class="sans bright" font-size="14" font-weight="700">Editor A</text>
+  <text x="84" y="206" class="mono faint" font-size="11">Monaco + Y.Doc</text>
+
+  <rect x="328" y="152" width="216" height="76" rx="14" class="card"/>
+  <circle cx="352" cy="180" r="5" fill="#8bb4ff"/>
+  <text x="366" y="184" class="sans bright" font-size="14" font-weight="700">IndexedDB</text>
+  <text x="348" y="206" class="mono faint" font-size="11">y-indexeddb</text>
+
+  <rect x="592" y="152" width="216" height="76" rx="14" class="card"/>
+  <circle cx="616" cy="180" r="5" fill="#c3f56b"/>
+  <text x="630" y="184" class="sans bright" font-size="14" font-weight="700">Server</text>
+  <text x="612" y="206" class="mono faint" font-size="11">Socket.IO + Y.Doc</text>
+
+  <rect x="856" y="152" width="216" height="76" rx="14" class="card"/>
+  <circle cx="880" cy="180" r="5" fill="#85d7ad"/>
+  <text x="894" y="184" class="sans bright" font-size="14" font-weight="700">Redis</text>
+  <text x="876" y="206" class="mono faint" font-size="11">stream + pub/sub</text>
+
+  <rect x="1120" y="152" width="216" height="76" rx="14" class="card"/>
+  <circle cx="1144" cy="180" r="5" fill="#c4b5fd"/>
+  <text x="1158" y="184" class="sans bright" font-size="14" font-weight="700">Editor B … N</text>
+  <text x="1140" y="206" class="mono faint" font-size="11">same room</text>
+
+  <!-- Lifelines -->
+  <path d="M172 228V676" class="lifeline"/>
+  <path d="M436 228V676" class="lifeline"/>
+  <path d="M700 228V676" class="lifeline"/>
+  <path d="M964 228V676" class="lifeline"/>
+  <path d="M1228 228V676" class="lifeline"/>
+
+  <!-- 1 · local persistence -->
+  <circle cx="30" cy="262" r="12" class="step"/>
+  <text x="30" y="266" text-anchor="middle" class="mono lime" font-size="11">1</text>
+  <path d="M172 262H428" class="connector-blue"/>
+  <text x="182" y="252" class="mono muted" font-size="12">write the update locally first</text>
+
+  <!-- 2 · send to server -->
+  <circle cx="30" cy="316" r="12" class="step"/>
+  <text x="30" y="320" text-anchor="middle" class="mono lime" font-size="11">2</text>
+  <path d="M172 316H692" class="connector-accent"/>
+  <text x="182" y="306" class="mono muted" font-size="12">emit document:update { roomId, update }</text>
+
+  <!-- 3 · validate (self call) -->
+  <circle cx="30" cy="370" r="12" class="step"/>
+  <text x="30" y="374" text-anchor="middle" class="mono lime" font-size="11">3</text>
+  <path d="M700 356h56v28h-48" class="connector"/>
+  <text x="772" y="366" class="mono muted" font-size="12">replay into a throwaway Y.Doc —</text>
+  <text x="772" y="384" class="mono faint" font-size="12">a malformed update is rejected here</text>
+
+  <!-- 4 · append to stream -->
+  <circle cx="30" cy="424" r="12" class="step"/>
+  <text x="30" y="428" text-anchor="middle" class="mono lime" font-size="11">4</text>
+  <path d="M700 424H956" class="connector"/>
+  <text x="710" y="414" class="mono muted" font-size="12">XADD room updates</text>
+
+  <!-- 5 · ack -->
+  <circle cx="30" cy="478" r="12" class="step"/>
+  <text x="30" y="482" text-anchor="middle" class="mono lime" font-size="11">5</text>
+  <path d="M964 478H708" class="connector"/>
+  <text x="710" y="468" class="mono muted" font-size="12">durable · plus a compaction hint once the stream is long</text>
+
+  <!-- 6 · apply authoritative -->
+  <circle cx="30" cy="532" r="12" class="step"/>
+  <text x="30" y="536" text-anchor="middle" class="mono lime" font-size="11">6</text>
+  <path d="M700 518h56v28h-48" class="connector-accent"/>
+  <text x="772" y="540" class="mono muted" font-size="12">apply to the authoritative room document</text>
+
+  <!-- 7 · fan out -->
+  <circle cx="30" cy="586" r="12" class="step"/>
+  <text x="30" y="590" text-anchor="middle" class="mono lime" font-size="11">7</text>
+  <path d="M700 586H1220" class="connector-accent"/>
+  <text x="710" y="576" class="mono muted" font-size="12">broadcast to every other socket in the room</text>
+
+  <!-- 8 · replicate across instances -->
+  <circle cx="30" cy="640" r="12" class="step"/>
+  <text x="30" y="644" text-anchor="middle" class="mono lime" font-size="11">8</text>
+  <path d="M700 640H956" class="connector"/>
+  <text x="710" y="630" class="mono muted" font-size="12">PUBLISH to document-updates</text>
+  <text x="1000" y="630" class="mono faint" font-size="12">→ sibling instances apply the same</text>
+  <text x="1000" y="648" class="mono faint" font-size="12">update, so every replica converges</text>
+
+  <!-- Invariant callout -->
+  <rect x="64" y="702" width="470" height="46" rx="12" fill="#263020" stroke="#465838"/>
+  <text x="299" y="731" text-anchor="middle" class="mono lime" font-size="12.5">VALIDATE  →  PERSIST  →  APPLY  →  BROADCAST</text>
+
+  <text x="566" y="721" class="sans muted" font-size="13">Steps 1 and 2 are independent: if the socket is down, the edit still lands in</text>
+  <text x="566" y="741" class="sans muted" font-size="13">IndexedDB and replays on reconnect, and the CRDT merges it without conflict.</text>
+</svg>

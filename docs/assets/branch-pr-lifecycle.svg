@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title description">
+  <title id="title">Branch, commit and pull request lifecycle inside a workspace</title>
+  <desc id="description">Flow diagram. The live Yjs workspace is snapshotted into a commit holding the whole file tree plus a tree hash. A branch is a named pointer to a head commit, advanced only through a compare-and-swap on the expected parent commit. A pull request opens from a source branch onto a target branch and resolves in one of three ways: merged after a clean three-way merge, blocked with HTTP 409 when the merge conflicts, or closed without merging. A merge creates a merge commit on the target branch, whose tree can be synced back onto the live document or exported as a git patch.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#91a2bc"/>
+    </marker>
+    <marker id="arrowAccent" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#c3f56b"/>
+    </marker>
+    <marker id="arrowWarn" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#ffa198"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .faint { fill: #7a8699; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .warn { fill: #ffa198; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .card-lime { fill: #192015; stroke: #4a5c3a; stroke-width: 1.5; }
+      .card-warn { fill: #231719; stroke: #5e3e3e; stroke-width: 1.5; }
+      .connector { fill: none; stroke: #91a2bc; stroke-width: 2.2; marker-end: url(#arrow); }
+      .connector-accent { fill: none; stroke: #c3f56b; stroke-width: 2.2; marker-end: url(#arrowAccent); }
+      .connector-warn { fill: none; stroke: #ffa198; stroke-width: 2.2; marker-end: url(#arrowWarn); }
+      .bus { fill: none; stroke: #91a2bc; stroke-width: 2.2; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="780" rx="28" fill="url(#background)"/>
+  <circle cx="1310" cy="40" r="180" fill="#c3f56b" opacity=".035"/>
+  <circle cx="70" cy="740" r="190" fill="#7ea8ff" opacity=".035"/>
+
+  <text x="54" y="54" class="mono lime" font-size="13" letter-spacing="2.5">SYNCFORGE / VERSION CONTROL</text>
+  <text x="54" y="98" class="sans bright" font-size="32" font-weight="700">Git-shaped review, without leaving the browser.</text>
+  <text x="54" y="126" class="sans muted" font-size="15">Commits are whole-tree snapshots. A branch only advances if its expected parent is still the head — so two reviewers cannot overwrite each other.</text>
+
+  <!-- ── Row 1: the pipeline ─────────────────────────────────────────── -->
+  <text x="64" y="162" class="mono faint" font-size="11" letter-spacing="2">SNAPSHOT PIPELINE</text>
+
+  <rect x="64" y="176" width="252" height="116" rx="16" class="card"/>
+  <circle cx="88" cy="206" r="5" fill="#c3f56b"/>
+  <text x="102" y="210" class="sans bright" font-size="15" font-weight="700">Live workspace</text>
+  <text x="86" y="238" class="sans muted" font-size="12.5">The shared Yjs document</text>
+  <text x="86" y="258" class="sans muted" font-size="12.5">every collaborator is typing</text>
+  <text x="86" y="278" class="sans muted" font-size="12.5">into right now.</text>
+
+  <path d="M316 234H396" class="connector-accent"/>
+  <text x="322" y="224" class="mono faint" font-size="11">commit</text>
+
+  <rect x="404" y="176" width="252" height="116" rx="16" class="card"/>
+  <circle cx="428" cy="206" r="5" fill="#85d7ad"/>
+  <text x="442" y="210" class="sans bright" font-size="15" font-weight="700">Commit</text>
+  <text x="426" y="238" class="sans muted" font-size="12.5">The entire file tree, plus a</text>
+  <text x="426" y="258" class="sans muted" font-size="12.5">tree hash and a pointer to</text>
+  <text x="426" y="278" class="sans muted" font-size="12.5">its parent commit.</text>
+
+  <path d="M656 234H736" class="connector-accent"/>
+  <text x="662" y="224" class="mono faint" font-size="11">advance</text>
+
+  <rect x="744" y="176" width="252" height="116" rx="16" class="card"/>
+  <circle cx="768" cy="206" r="5" fill="#8bb4ff"/>
+  <text x="782" y="210" class="sans bright" font-size="15" font-weight="700">Branch head</text>
+  <text x="766" y="238" class="sans muted" font-size="12.5">A named pointer. Moves only</text>
+  <text x="766" y="258" class="sans muted" font-size="12.5">when the expected parent is</text>
+  <text x="766" y="278" class="sans muted" font-size="12.5">still the head — a CAS.</text>
+
+  <path d="M996 234H1076" class="connector-accent"/>
+  <text x="1002" y="224" class="mono faint" font-size="11">open</text>
+
+  <rect x="1084" y="176" width="252" height="116" rx="16" class="card"/>
+  <circle cx="1108" cy="206" r="5" fill="#c4b5fd"/>
+  <text x="1122" y="210" class="sans bright" font-size="15" font-weight="700">Pull request</text>
+  <text x="1106" y="238" class="sans muted" font-size="12.5">source → target, with a</text>
+  <text x="1106" y="258" class="sans muted" font-size="12.5">unified diff and a comment</text>
+  <text x="1106" y="278" class="sans muted" font-size="12.5">thread. Status: open.</text>
+
+  <!-- ── Row 2: resolution ──────────────────────────────────────────── -->
+  <path d="M1210 292V336" class="bus"/>
+  <path d="M530 336H1210" class="bus"/>
+  <path d="M530 336V368" class="connector-accent"/>
+  <path d="M870 336V368" class="connector-warn"/>
+  <path d="M1210 336V368" class="connector"/>
+
+  <text x="64" y="396" class="mono faint" font-size="11" letter-spacing="2">HOW A PR</text>
+  <text x="64" y="414" class="mono faint" font-size="11" letter-spacing="2">RESOLVES</text>
+  <text x="64" y="444" class="sans muted" font-size="12.5">A three-way merge</text>
+  <text x="64" y="463" class="sans muted" font-size="12.5">decides which of</text>
+  <text x="64" y="482" class="sans muted" font-size="12.5">these happens.</text>
+
+  <rect x="404" y="376" width="252" height="116" rx="16" class="card-lime"/>
+  <text x="426" y="408" class="mono lime" font-size="11" letter-spacing="1.5">MERGED</text>
+  <text x="426" y="434" class="sans bright" font-size="14" font-weight="600">Clean three-way merge</text>
+  <text x="426" y="458" class="sans muted" font-size="12.5">A merge commit lands on the</text>
+  <text x="426" y="477" class="sans muted" font-size="12.5">target branch.</text>
+
+  <rect x="744" y="376" width="252" height="116" rx="16" class="card-warn"/>
+  <text x="766" y="408" class="mono warn" font-size="11" letter-spacing="1.5">BLOCKED · 409</text>
+  <text x="766" y="434" class="sans bright" font-size="14" font-weight="600">Merge conflict</text>
+  <text x="766" y="458" class="sans muted" font-size="12.5">The diff carries conflict</text>
+  <text x="766" y="477" class="sans muted" font-size="12.5">markers. Nothing is written.</text>
+
+  <rect x="1084" y="376" width="252" height="116" rx="16" class="card"/>
+  <text x="1106" y="408" class="mono faint" font-size="11" letter-spacing="1.5">CLOSED</text>
+  <text x="1106" y="434" class="sans bright" font-size="14" font-weight="600">Closed unmerged</text>
+  <text x="1106" y="458" class="sans muted" font-size="12.5">No merge commit. The source</text>
+  <text x="1106" y="477" class="sans muted" font-size="12.5">branch is left untouched.</text>
+
+  <!-- ── Row 3: what a merged tree feeds ────────────────────────────── -->
+  <path d="M530 492V528H190V552" class="connector-accent"/>
+
+  <text x="64" y="536" class="mono faint" font-size="11" letter-spacing="2">AFTER A MERGE</text>
+
+  <rect x="64" y="560" width="252" height="116" rx="16" class="card"/>
+  <circle cx="88" cy="590" r="5" fill="#c3f56b"/>
+  <text x="102" y="594" class="sans bright" font-size="15" font-weight="700">Merge commit</text>
+  <text x="86" y="622" class="sans muted" font-size="12.5">Target tree overlaid with the</text>
+  <text x="86" y="642" class="sans muted" font-size="12.5">source tree, committed under</text>
+  <text x="86" y="662" class="sans muted" font-size="12.5">the same parent CAS.</text>
+
+  <path d="M316 618H396" class="connector"/>
+
+  <rect x="404" y="560" width="252" height="116" rx="16" class="card"/>
+  <circle cx="428" cy="590" r="5" fill="#85d7ad"/>
+  <text x="442" y="594" class="sans bright" font-size="15" font-weight="700">Sync to live</text>
+  <text x="426" y="622" class="sans muted" font-size="12.5">Applies a branch head tree</text>
+  <text x="426" y="642" class="sans muted" font-size="12.5">back onto the live document:</text>
+  <text x="426" y="662" class="sans muted" font-size="12.5">adds, updates, deletes.</text>
+
+  <path d="M656 618H736" class="connector"/>
+
+  <rect x="744" y="560" width="252" height="116" rx="16" class="card"/>
+  <circle cx="768" cy="590" r="5" fill="#8bb4ff"/>
+  <text x="782" y="594" class="sans bright" font-size="15" font-weight="700">Export .patch</text>
+  <text x="766" y="622" class="sans muted" font-size="12.5">A standard unified diff for</text>
+  <text x="766" y="642" class="sans muted" font-size="12.5">any branch or PR, ready for</text>
+  <text x="766" y="662" class="mono faint" font-size="12">git apply</text>
+
+  <rect x="1084" y="560" width="252" height="116" rx="16" class="card"/>
+  <text x="1106" y="594" class="mono faint" font-size="11" letter-spacing="1.5">ALWAYS AVAILABLE</text>
+  <text x="1106" y="622" class="sans muted" font-size="12.5">Branch history, per-commit</text>
+  <text x="1106" y="642" class="sans muted" font-size="12.5">diffs, and PR comments stay</text>
+  <text x="1106" y="662" class="sans muted" font-size="12.5">readable at every status.</text>
+
+  <text x="64" y="730" class="mono faint" font-size="11" letter-spacing="2">SYNCFORGE  /  BRANCHES  ·  COMMITS  ·  PULL REQUESTS</text>
+</svg>

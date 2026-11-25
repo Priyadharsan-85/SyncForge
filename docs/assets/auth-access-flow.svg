@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title description">
+  <title id="title">How SyncForge decides whether you may open a workspace</title>
+  <desc id="description">Decision diagram. Every workspace request passes four gates in order. First, the session cookie must carry a valid HMAC signature and an unexpired claim, or the request is rejected with 401. Second, the workspace must exist, or 404. Third, if the caller is already a member, access is granted immediately with their stored role. Otherwise a valid, unexpired invite token must be supplied, which is redeemed atomically into an editor membership; without one the request is rejected with 403. Knowing a room ID alone never grants access.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#91a2bc"/>
+    </marker>
+    <marker id="arrowAccent" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#c3f56b"/>
+    </marker>
+    <marker id="arrowWarn" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#ffa198"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .faint { fill: #7a8699; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .warn { fill: #ffa198; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .gate { fill: #1d2330; stroke: #3a4759; stroke-width: 1.5; }
+      .card-lime { fill: #192015; stroke: #4a5c3a; stroke-width: 1.5; }
+      .card-warn { fill: #231719; stroke: #5e3e3e; stroke-width: 1.5; }
+      .connector { fill: none; stroke: #91a2bc; stroke-width: 2.2; marker-end: url(#arrow); }
+      .connector-accent { fill: none; stroke: #c3f56b; stroke-width: 2.2; marker-end: url(#arrowAccent); }
+      .connector-warn { fill: none; stroke: #ffa198; stroke-width: 2.2; marker-end: url(#arrowWarn); }
+    </style>
+  </defs>
+
+  <rect width="1400" height="780" rx="28" fill="url(#background)"/>
+  <circle cx="1320" cy="60" r="180" fill="#c3f56b" opacity=".035"/>
+  <circle cx="60" cy="730" r="180" fill="#7ea8ff" opacity=".035"/>
+
+  <text x="54" y="54" class="mono lime" font-size="13" letter-spacing="2.5">SYNCFORGE / ACCESS CONTROL</text>
+  <text x="54" y="98" class="sans bright" font-size="32" font-weight="700">Four gates, in order, on every request.</text>
+  <text x="54" y="126" class="sans muted" font-size="15">Knowing a room ID is not access. Membership is explicit, and an invite is the only way to acquire it.</text>
+
+  <text x="300" y="166" class="mono faint" font-size="11" letter-spacing="2">REQUEST  →</text>
+  <text x="820" y="166" class="mono faint" font-size="11" letter-spacing="2">REJECTED  →</text>
+
+  <!-- Gate 1 -->
+  <rect x="300" y="186" width="420" height="64" rx="13" class="gate"/>
+  <text x="322" y="214" class="sans bright" font-size="14.5" font-weight="600">Is the session cookie signature valid?</text>
+  <text x="322" y="236" class="mono faint" font-size="11.5">HMAC-SHA256, constant-time compare, unexpired claim</text>
+
+  <path d="M720 218H812" class="connector-warn"/>
+  <rect x="820" y="190" width="380" height="56" rx="12" class="card-warn"/>
+  <text x="842" y="214" class="mono warn" font-size="11.5" letter-spacing="1.2">401</text>
+  <text x="842" y="234" class="sans muted" font-size="12.5">Authentication required. Sign in with GitHub.</text>
+
+  <path d="M510 250V284" class="connector"/>
+
+  <!-- Gate 2 -->
+  <rect x="300" y="292" width="420" height="64" rx="13" class="gate"/>
+  <text x="322" y="320" class="sans bright" font-size="14.5" font-weight="600">Does the workspace exist?</text>
+  <text x="322" y="342" class="mono faint" font-size="11.5">workspace:&lt;roomId&gt;:meta</text>
+
+  <path d="M720 324H812" class="connector-warn"/>
+  <rect x="820" y="296" width="380" height="56" rx="12" class="card-warn"/>
+  <text x="842" y="320" class="mono warn" font-size="11.5" letter-spacing="1.2">404</text>
+  <text x="842" y="340" class="sans muted" font-size="12.5">Workspace not found.</text>
+
+  <path d="M510 356V390" class="connector"/>
+
+  <!-- Gate 3 -->
+  <rect x="300" y="398" width="420" height="64" rx="13" class="gate"/>
+  <text x="322" y="426" class="sans bright" font-size="14.5" font-weight="600">Are you already a member?</text>
+  <text x="322" y="448" class="mono faint" font-size="11.5">owner · editor — read straight from the members hash</text>
+
+  <!-- Yes: short-circuit down the left gutter -->
+  <path d="M300 430H256V672H292" class="connector-accent"/>
+  <text x="152" y="548" class="mono lime" font-size="11.5">yes — skip</text>
+  <text x="152" y="566" class="mono lime" font-size="11.5">the invite gate</text>
+
+  <path d="M510 462V496" class="connector"/>
+  <text x="522" y="486" class="mono faint" font-size="11.5">no</text>
+
+  <!-- Gate 4 -->
+  <rect x="300" y="504" width="420" height="64" rx="13" class="gate"/>
+  <text x="322" y="532" class="sans bright" font-size="14.5" font-weight="600">Did you bring a live invite token?</text>
+  <text x="322" y="554" class="mono faint" font-size="11.5">SHA-256 keyed, 7-day TTL, redeemed in one Lua call</text>
+
+  <path d="M720 536H812" class="connector-warn"/>
+  <rect x="820" y="508" width="380" height="56" rx="12" class="card-warn"/>
+  <text x="842" y="532" class="mono warn" font-size="11.5" letter-spacing="1.2">403</text>
+  <text x="842" y="552" class="sans muted" font-size="12.5">No access. Ask the owner for an invite link.</text>
+
+  <path d="M510 568V632" class="connector-accent"/>
+  <text x="522" y="606" class="mono lime" font-size="11.5">yes → granted editor</text>
+
+  <!-- Granted -->
+  <rect x="300" y="640" width="420" height="64" rx="13" class="card-lime"/>
+  <text x="322" y="668" class="mono lime" font-size="11.5" letter-spacing="1.5">ACCESS GRANTED</text>
+  <text x="322" y="690" class="sans muted" font-size="12.5">Only owners may invite, rename, or delete the workspace.</text>
+
+  <!-- Side notes -->
+  <rect x="820" y="600" width="380" height="104" rx="13" class="card"/>
+  <text x="842" y="630" class="mono faint" font-size="11" letter-spacing="1.5">SEEDED AT IMPORT</text>
+  <text x="842" y="656" class="sans muted" font-size="12.5">When a public GitHub repository is</text>
+  <text x="842" y="675" class="sans muted" font-size="12.5">imported, its existing contributors are</text>
+  <text x="842" y="694" class="sans muted" font-size="12.5">written in as editors up front.</text>
+
+  <rect x="820" y="372" width="380" height="104" rx="13" class="card"/>
+  <text x="842" y="402" class="mono faint" font-size="11" letter-spacing="1.5">ALSO ENFORCED HERE</text>
+  <text x="842" y="428" class="sans muted" font-size="12.5">The same check runs on the WebSocket</text>
+  <text x="842" y="447" class="sans muted" font-size="12.5">handshake and on every document</text>
+  <text x="842" y="466" class="sans muted" font-size="12.5">update — not only on REST calls.</text>
+
+  <text x="54" y="750" class="mono faint" font-size="11" letter-spacing="2">SYNCFORGE  /  GITHUB OAUTH  ·  SIGNED SESSIONS  ·  WORKSPACE ACL</text>
+</svg>

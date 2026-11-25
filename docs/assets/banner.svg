@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="340" viewBox="0 0 1400 340" role="img" aria-labelledby="title description">
+  <title id="title">SyncForge — a real-time collaborative code workspace</title>
+  <desc id="description">SyncForge banner. A real-time collaborative code workspace where multiple people edit the same files at once, with CRDT-backed multiplayer editing, branches, pull requests and AI draft patches. The illustration shows an editor with two collaborators' cursors in the same file.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .faint { fill: #7a8699; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .chip { fill: #1d2330; stroke: #343e4f; stroke-width: 1; }
+      .codeline { fill: #2a3242; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="340" rx="28" fill="url(#background)"/>
+  <circle cx="1290" cy="30" r="200" fill="#c3f56b" opacity=".04"/>
+  <circle cx="110" cy="330" r="190" fill="#7ea8ff" opacity=".04"/>
+
+  <!-- Brand -->
+  <rect x="56" y="52" width="52" height="52" rx="15" fill="#283425"/>
+  <path d="m82 66-10 12 10 12m14-24 10 12-10 12" fill="none" stroke="#c3f56b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="124" y="88" class="sans bright" font-size="29" font-weight="700">sync<tspan class="lime">forge</tspan></text>
+
+  <!-- Headline -->
+  <text x="56" y="168" class="sans bright" font-size="41" font-weight="700">Everyone in the same file,</text>
+  <text x="56" y="214" class="sans bright" font-size="41" font-weight="700">at the same time.</text>
+  <text x="56" y="250" class="sans muted" font-size="16">CRDT multiplayer editing · branches · pull requests · AI drafts</text>
+
+  <!-- Capability chips -->
+  <rect x="56" y="274" width="128" height="30" rx="15" class="chip"/>
+  <circle cx="76" cy="289" r="4" fill="#c3f56b"/>
+  <text x="88" y="294" class="mono muted" font-size="12">Yjs CRDTs</text>
+
+  <rect x="192" y="274" width="140" height="30" rx="15" class="chip"/>
+  <circle cx="212" cy="289" r="4" fill="#85d7ad"/>
+  <text x="224" y="294" class="mono muted" font-size="12">Offline-first</text>
+
+  <rect x="340" y="274" width="150" height="30" rx="15" class="chip"/>
+  <circle cx="360" cy="289" r="4" fill="#8bb4ff"/>
+  <text x="372" y="294" class="mono muted" font-size="12">Branches + PRs</text>
+
+  <rect x="498" y="274" width="138" height="30" rx="15" class="chip"/>
+  <circle cx="518" cy="289" r="4" fill="#c4b5fd"/>
+  <text x="530" y="294" class="mono muted" font-size="12">AI drafts</text>
+
+  <!-- Editor illustration -->
+  <rect x="800" y="52" width="544" height="236" rx="16" class="card"/>
+  <path d="M800 86a16 16 0 0 1 16-16h512a16 16 0 0 1 16 16v4H800z" fill="#1d2330"/>
+  <circle cx="824" cy="78" r="4.5" fill="#f87171"/>
+  <circle cx="842" cy="78" r="4.5" fill="#ffd8a8"/>
+  <circle cx="860" cy="78" r="4.5" fill="#7ee787"/>
+  <text x="884" y="82" class="mono faint" font-size="11">editorBinding.ts</text>
+  <text x="1230" y="82" class="mono lime" font-size="11">● 3 online</text>
+
+  <!-- Code lines -->
+  <rect x="826" y="110" width="196" height="9" rx="4.5" class="codeline"/>
+  <rect x="826" y="130" width="286" height="9" rx="4.5" class="codeline"/>
+  <rect x="846" y="150" width="152" height="9" rx="4.5" fill="#3a4759"/>
+  <rect x="846" y="170" width="238" height="9" rx="4.5" class="codeline"/>
+  <rect x="826" y="190" width="124" height="9" rx="4.5" class="codeline"/>
+  <rect x="826" y="210" width="264" height="9" rx="4.5" class="codeline"/>
+  <rect x="846" y="230" width="178" height="9" rx="4.5" class="codeline"/>
+  <rect x="826" y="250" width="208" height="9" rx="4.5" class="codeline"/>
+
+  <!-- Collaborator carets, in the same file at once -->
+  <rect x="1004" y="146" width="2.5" height="17" fill="#c3f56b"/>
+  <rect x="1010" y="142" width="62" height="17" rx="5" fill="#c3f56b"/>
+  <text x="1041" y="154" text-anchor="middle" class="mono" font-size="10" fill="#17200c">priya</text>
+
+  <rect x="1090" y="166" width="2.5" height="17" fill="#8bb4ff"/>
+  <rect x="1096" y="162" width="52" height="17" rx="5" fill="#8bb4ff"/>
+  <text x="1122" y="174" text-anchor="middle" class="mono" font-size="10" fill="#0d1623">dev2</text>
+
+  <rect x="1038" y="226" width="2.5" height="17" fill="#c4b5fd"/>
+  <rect x="1044" y="222" width="46" height="17" rx="5" fill="#c4b5fd"/>
+  <text x="1067" y="234" text-anchor="middle" class="mono" font-size="10" fill="#1a1230">ana</text>
+
+  <text x="56" y="322" class="mono faint" font-size="11" letter-spacing="2">NODE.JS  ·  REACT 19  ·  MONACO  ·  SOCKET.IO  ·  YJS  ·  REDIS</text>
+</svg>
