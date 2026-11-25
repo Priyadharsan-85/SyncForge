@@ -685,6 +685,45 @@ function App() {
     setWorkspaceNotice(`Applied AI proposal to ${activeFile.name}.`)
   }
 
+  function downloadWorkspaceSingleFile(file: WorkspaceFile, event: React.MouseEvent) {
+    event.stopPropagation()
+    const blob = new Blob([file.content.toString()], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  function duplicateWorkspaceFile(file: WorkspaceFile, event: React.MouseEvent) {
+    event.stopPropagation()
+    const fileMap = filesRef.current
+    if (!fileMap) return
+    const parts = file.name.split('.')
+    let copyName = ''
+    if (parts.length > 1) {
+      const ext = parts.pop()
+      copyName = `${parts.join('.')}-copy.${ext}`
+    } else {
+      copyName = `${file.name}-copy`
+    }
+    let counter = 1
+    const existingNames = new Set(readWorkspaceFiles(fileMap).map((f) => f.name.toLowerCase()))
+    while (existingNames.has(copyName.toLowerCase())) {
+      counter++
+      const ext = file.name.split('.').pop()
+      const base = file.name.includes('.') ? file.name.slice(0, -(ext!.length + 1)) : file.name
+      copyName = file.name.includes('.') ? `${base}-copy-${counter}.${ext}` : `${base}-copy-${counter}`
+    }
+    const newId = crypto.randomUUID()
+    fileMap.set(newId, createFileRecord(copyName, file.content.toString()))
+    setActiveFileId(newId)
+    setWorkspaceNotice(`Duplicated ${file.name} as ${copyName}.`)
+  }
+
   async function handleSyncLive(branchName: string) {
     try {
       const response = await fetch(
@@ -1080,6 +1119,24 @@ function App() {
                     aria-label={`Rename ${file.name}`}
                   >
                     <span style={{ fontSize: 10 }}>✎</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="file-action-btn"
+                    onClick={(e) => duplicateWorkspaceFile(file, e)}
+                    title="Duplicate file"
+                    aria-label={`Duplicate ${file.name}`}
+                  >
+                    <Copy size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    className="file-action-btn"
+                    onClick={(e) => downloadWorkspaceSingleFile(file, e)}
+                    title="Download file"
+                    aria-label={`Download ${file.name}`}
+                  >
+                    <Download size={11} />
                   </button>
                   <button
                     className="file-action-btn file-delete-btn"
