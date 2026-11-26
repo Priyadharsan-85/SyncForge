@@ -256,8 +256,10 @@ function App() {
     return () => { active = false }
   }, [])
 
+  // Loaded in a room too, not just on the dashboard: the top bar shows the
+  // workspace's name, and a deep link (?room=…) never visits the dashboard.
   useEffect(() => {
-    if (!user || roomId) return
+    if (!user) return
     let active = true
     setWorkspacesLoading(true)
     fetch('/api/workspaces', { cache: 'no-store' })
