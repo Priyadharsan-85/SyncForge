@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="640" viewBox="0 0 1400 640" role="img" aria-labelledby="title description">
+  <title id="title">SyncForge deployment topology</title>
+  <desc id="description">Deployment diagram. A multi-stage Docker build compiles the React client on Debian and copies it into an Alpine Node.js runtime image. That single image serves the API, Socket.IO and the static client from one origin. It runs either on Render, provisioned from render.yaml with a private Key Value instance, or with Docker Compose behind nginx with a Redis container. GitHub Actions runs tests, lint, build and a Docker smoke test on every push, and publishes the image to GitHub Container Registry from main.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#161922"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#91a2bc"/>
+    </marker>
+    <marker id="arrowAccent" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#c3f56b"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "DM Mono", Consolas, monospace; }
+      .muted { fill: #a4adbc; }
+      .bright { fill: #f3f5f8; }
+      .lime { fill: #c3f56b; }
+      .card { fill: #171b24; stroke: #303746; stroke-width: 1.5; }
+      .card-accent { fill: #171b24; stroke: #c3f56b; stroke-width: 1.5; }
+      .inner { fill: #1d2330; stroke: #343e4f; stroke-width: 1; }
+      .connector { fill: none; stroke: #91a2bc; stroke-width: 2.5; marker-end: url(#arrow); }
+      .connector-accent { fill: none; stroke: #c3f56b; stroke-width: 2.5; marker-end: url(#arrowAccent); }
+    </style>
+  </defs>
+
+  <rect width="1400" height="640" rx="28" fill="url(#background)"/>
+
+  <text x="60" y="70" class="mono lime" font-size="15" letter-spacing="2">SYNCFORGE / DEPLOYMENT</text>
+  <text x="60" y="112" class="sans bright" font-size="34" font-weight="700">One image, one origin, two ways to run it.</text>
+  <text x="60" y="146" class="sans muted" font-size="18">The Node server serves the API, WebSockets and the built client, so cookies and CORS stay same-origin.</text>
+
+  <!-- CI column -->
+  <rect x="60" y="190" width="330" height="390" rx="18" class="card"/>
+  <text x="84" y="226" class="mono muted" font-size="13" letter-spacing="1.5">GITHUB ACTIONS</text>
+  <rect x="84" y="246" width="282" height="62" rx="10" class="inner"/>
+  <text x="104" y="273" class="sans bright" font-size="17" font-weight="600">Test · lint · build</text>
+  <text x="104" y="295" class="sans muted" font-size="14">Node 22 + 24, Redis service</text>
+  <rect x="84" y="322" width="282" height="62" rx="10" class="inner"/>
+  <text x="104" y="349" class="sans bright" font-size="17" font-weight="600">Docker smoke test</text>
+  <text x="104" y="371" class="sans muted" font-size="14">/ready, SPA, JSON 404, /metrics 401</text>
+  <rect x="84" y="398" width="282" height="62" rx="10" class="inner"/>
+  <text x="104" y="425" class="sans bright" font-size="17" font-weight="600">Publish to GHCR</text>
+  <text x="104" y="447" class="sans muted" font-size="14">main + v*.*.* tags, SHA-stamped</text>
+  <text x="84" y="500" class="sans muted" font-size="14">Dependabot keeps npm, Actions</text>
+  <text x="84" y="522" class="sans muted" font-size="14">and base images current.</text>
+
+  <!-- Image column -->
+  <rect x="460" y="190" width="400" height="390" rx="18" class="card-accent"/>
+  <text x="484" y="226" class="mono lime" font-size="13" letter-spacing="1.5">DOCKERFILE (MULTI-STAGE)</text>
+  <rect x="484" y="246" width="352" height="78" rx="10" class="inner"/>
+  <text x="504" y="275" class="sans bright" font-size="17" font-weight="600">client-builder · bookworm-slim</text>
+  <text x="504" y="299" class="sans muted" font-size="14">npm ci → tsc → vite build → client/dist</text>
+  <path d="M660 330 V360" class="connector-accent"/>
+  <rect x="484" y="366" width="352" height="190" rx="10" class="inner"/>
+  <text x="504" y="395" class="sans bright" font-size="17" font-weight="600">server · node:22-alpine, non-root</text>
+  <text x="504" y="425" class="mono bright" font-size="14">/api, /auth</text><text x="660" y="425" class="sans muted" font-size="14">Express routes</text>
+  <text x="504" y="451" class="mono bright" font-size="14">/socket.io</text><text x="660" y="451" class="sans muted" font-size="14">Yjs collaboration</text>
+  <text x="504" y="477" class="mono bright" font-size="14">/health, /ready</text><text x="660" y="477" class="sans muted" font-size="14">probes</text>
+  <text x="504" y="503" class="mono bright" font-size="14">/metrics</text><text x="660" y="503" class="sans muted" font-size="14">Prometheus</text>
+  <text x="504" y="529" class="mono bright" font-size="14">/*</text><text x="660" y="529" class="sans muted" font-size="14">SPA + strict CSP</text>
+
+  <path d="M390 385 H452" class="connector"/>
+
+  <!-- Targets column -->
+  <rect x="930" y="190" width="410" height="180" rx="18" class="card"/>
+  <text x="954" y="226" class="mono muted" font-size="13" letter-spacing="1.5">RENDER  ·  render.yaml</text>
+  <rect x="954" y="246" width="170" height="100" rx="10" class="inner"/>
+  <text x="972" y="276" class="sans bright" font-size="16" font-weight="600">Web service</text>
+  <text x="972" y="300" class="sans muted" font-size="13">Docker runtime</text>
+  <text x="972" y="322" class="sans muted" font-size="13">health: /ready</text>
+  <rect x="1146" y="246" width="170" height="100" rx="10" class="inner"/>
+  <text x="1164" y="276" class="sans bright" font-size="16" font-weight="600">Key Value</text>
+  <text x="1164" y="300" class="sans muted" font-size="13">Redis-compatible</text>
+  <text x="1164" y="322" class="sans muted" font-size="13">private network</text>
+  <path d="M1124 296 H1138" class="connector"/>
+
+  <rect x="930" y="400" width="410" height="180" rx="18" class="card"/>
+  <text x="954" y="436" class="mono muted" font-size="13" letter-spacing="1.5">SELF-HOSTED  ·  docker compose</text>
+  <rect x="954" y="456" width="110" height="100" rx="10" class="inner"/>
+  <text x="972" y="490" class="sans bright" font-size="16" font-weight="600">nginx</text>
+  <text x="972" y="514" class="sans muted" font-size="13">:80, WS</text>
+  <text x="972" y="534" class="sans muted" font-size="13">upgrade</text>
+  <rect x="1080" y="456" width="110" height="100" rx="10" class="inner"/>
+  <text x="1098" y="490" class="sans bright" font-size="16" font-weight="600">server</text>
+  <text x="1098" y="514" class="sans muted" font-size="13">the image</text>
+  <rect x="1206" y="456" width="110" height="100" rx="10" class="inner"/>
+  <text x="1224" y="490" class="sans bright" font-size="16" font-weight="600">redis</text>
+  <text x="1224" y="514" class="sans muted" font-size="13">AOF volume</text>
+  <path d="M1064 506 H1072" class="connector"/>
+  <path d="M1190 506 H1198" class="connector"/>
+
+  <path d="M860 330 C895 330 895 280 922 280" class="connector-accent"/>
+  <path d="M860 460 C895 460 895 490 922 490" class="connector-accent"/>
+</svg>
