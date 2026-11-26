@@ -29,7 +29,7 @@
   },
   "overrides": {
     "monaco-editor": {
-      "dompurify": "3.4.18"
+      "dompurify": "3.5.0"
     }
   }
 }
