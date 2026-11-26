@@ -1,0 +1,45 @@
+# Render Blueprint — one-click deploy of SyncForge.
+#   https://render.com/deploy?repo=https://github.com/Priyadharsan-85/SyncForge
+#
+# Creates the app (Docker image: API + WebSockets + built client) and a Redis-
+# compatible Key Value instance. After the first deploy, set GITHUB_CLIENT_ID
+# and GITHUB_CLIENT_SECRET from a GitHub OAuth App whose callback URL is
+#   https://<service>.onrender.com/auth/github/callback
+# CLIENT_ORIGIN defaults to the service's RENDER_EXTERNAL_URL.
+#
+# The free plans are fine for a demo: the web service sleeps after 15 idle
+# minutes and free Key Value is not persisted across restarts. Move both to a
+# paid plan for real use.
+
+services:
+  - type: web
+    name: syncforge
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: syncforge-redis
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: METRICS_TOKEN
+        generateValue: true
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+
+  - type: keyvalue
+    name: syncforge-redis
+    plan: free
+    # Workspace documents live here; never evict them to make room.
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
