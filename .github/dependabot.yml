@@ -8,6 +8,14 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Platform binaries pinned so Linux CI and Docker builds resolve them.
+      # They must move in lockstep with their parent package (rolldown,
+      # oxlint, lightningcss, typescript), never on their own.
+      - dependency-name: "@rolldown/binding-*"
+      - dependency-name: "@oxlint/binding-*"
+      - dependency-name: "lightningcss-*"
+      - dependency-name: "@typescript/typescript-*"
 
   - package-ecosystem: github-actions
     directory: /
