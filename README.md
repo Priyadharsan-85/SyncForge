@@ -1,204 +1,213 @@
-# SyncForge
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="SyncForge — everyone in the same file, at the same time" width="100%" />
+</p>
 
-A real-time collaborative code workspace for teams. Multiple people can edit the same files simultaneously, with changes synced live through CRDTs (Yjs). Built on Node.js, React, Monaco Editor, Socket.IO, and Redis.
+<p align="center">
+  <a href="https://github.com/Priyadharsan-85/SyncForge/actions/workflows/ci.yml"><img src="https://github.com/Priyadharsan-85/SyncForge/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Priyadharsan-85/SyncForge/actions/workflows/docker.yml"><img src="https://github.com/Priyadharsan-85/SyncForge/actions/workflows/docker.yml/badge.svg" alt="Docker image" /></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=node.js&logoColor=white" alt="Node 22.18+" />
+  <img src="https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black" alt="React 19" />
+  <img src="https://img.shields.io/badge/CRDT-Yjs-c3f56b" alt="Yjs CRDT" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
+</p>
 
-[![CI](https://github.com/Priyadharsan-85/SyncForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Priyadharsan-85/SyncForge/actions/workflows/ci.yml)
+<p align="center">
+  <b>A real-time collaborative code workspace.</b><br />
+  Edit the same files together, branch and review like Git, and let AI draft changes you approve — all in the browser.
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/DEPLOYMENT.md">Deploy</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="docs/API.md">API</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/workspace.png" alt="The SyncForge editor with two collaborators in a TypeScript project" width="100%" />
+</p>
 
 ---
 
 ## Features
 
-- **Real-time collaboration** — every keystroke is propagated instantly to all connected editors using Yjs CRDTs
-- **Offline resilience** — edits made while disconnected are synced automatically when the connection returns, using IndexedDB for local persistence
-- **Multi-file workspaces** — create, rename, and delete files within a shared workspace
-- **Branch management** — create branches, commit snapshots, and track history without leaving the browser
-- **Pull requests** — open, review, diff, and merge branches inside the workspace
-- **AI code assistant** — generate private draft patches (JSDoc, refactor, tests, custom prompts) that only apply when you explicitly accept them
-- **GitHub import** — import any public GitHub repository directly into a workspace
-- **Patch export** — download standard `.patch` files from any branch or PR to apply locally with `git apply`
-- **Invite links** — workspace owners can share a time-limited invite URL to add collaborators
-- **GitHub OAuth** — sign in with your GitHub account; contributors of imported repositories get editor access automatically
+| | |
+|---|---|
+| **Real-time collaboration** | Every keystroke reaches everyone in the room through Yjs CRDTs — concurrent edits merge without conflicts or locks. |
+| **Offline-first** | Edits are kept in IndexedDB and reconcile automatically when the connection returns. |
+| **Branches & commits** | Snapshot the live workspace into commits, branch from any head, and sync a branch back to the live document. |
+| **Pull requests** | Open, discuss, diff and three-way merge branches. Conflicts are reported, never silently overwritten. |
+| **AI drafts** | Generate JSDoc, refactors, tests or custom changes as *private* draft patches that only land when you accept them. |
+| **Import anything** | Start blank, drop in a folder or ZIP, or import a public GitHub repository. |
+| **Export anywhere** | Download a workspace as ZIP, or any branch/PR as a `.patch` for `git apply`. |
+| **Access control** | GitHub sign-in, owner/editor roles, and seven-day invite links. Knowing a room ID is never enough. |
+| **Command palette** | `Ctrl/Cmd+K` to jump to any file or action; keyboard shortcuts for everything else. |
+| **Production-ready ops** | Health/readiness probes, Prometheus metrics, build info, structured logs, strict CSP, graceful shutdown. |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/dashboard.png" alt="Workspace dashboard with import options" /></td>
+    <td width="50%"><img src="docs/screenshots/command-palette.png" alt="Command palette listing files and actions" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Create, import, or reopen a workspace</sub></td>
+    <td align="center"><sub>Ctrl/Cmd+K command palette</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/branches.png" alt="Branch manager with commit, pull request and GitHub tabs" /></td>
+    <td width="50%"><img src="docs/screenshots/ai-assistant.png" alt="AI assistant generating a private draft patch" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Branches, commits and pull requests</sub></td>
+    <td align="center"><sub>AI drafts that never touch the shared file until accepted</sub></td>
+  </tr>
+</table>
 
 ---
 
-## Architecture
+## Tech stack
 
-```
-┌───────────────────────────────────┐
-│  Browser (React + Monaco + Yjs)   │
-│  IndexedDB local persistence      │
-└───────────┬───────────────────────┘
-            │ WebSocket (Socket.IO)
-            │ HTTP (REST)
-┌───────────▼───────────────────────┐
-│  Node.js / Express / Socket.IO    │
-│  Yjs server-side document store   │
-│  GitHub OAuth                     │
-└───────────┬───────────────────────┘
-            │
-┌───────────▼───────────────────────┐
-│  Redis (optional)                  │
-│  Session store, document updates,  │
-│  branch/PR/workspace metadata      │
-└───────────────────────────────────┘
-```
+| Layer | Technology |
+|---|---|
+| Client | React 19, TypeScript, Vite, Monaco Editor (bundled, lazy-loaded), Yjs, y-indexeddb, Socket.IO client |
+| Server | Node.js 22+, Express 5, Socket.IO 4, Yjs |
+| Storage | Redis 7 — document streams, metadata, rate limits, pub/sub (in-memory fallback for development) |
+| Auth | GitHub OAuth, HMAC-signed session cookies |
+| Delivery | Multi-stage Docker image, Docker Compose + nginx, Render Blueprint, GitHub Actions, GHCR |
 
-The server can run **without Redis** in development. In that mode all state is held in memory and is lost when the server restarts.
+---
+
+## How it works
+
+### Architecture
+
+![SyncForge system architecture](docs/assets/architecture.svg)
+
+The browser holds a full Yjs replica of the workspace. The server keeps the
+authoritative document per room, persists every update to Redis **before**
+broadcasting it, and fans updates out to other instances over Redis pub/sub —
+so the app scales horizontally behind a load balancer. Without `REDIS_URL` the
+server runs entirely in memory for local development.
+
+### One keystroke, end to end
+
+![How a keystroke reaches every collaborator](docs/assets/edit-sync-flow.svg)
+
+### Branches and pull requests
+
+![Branch, commit and pull request lifecycle](docs/assets/branch-pr-lifecycle.svg)
+
+### Access control
+
+![Access control decision flow](docs/assets/auth-access-flow.svg)
+
+<details>
+<summary><b>Redis keyspace</b></summary>
+
+![SyncForge Redis keyspace](docs/assets/redis-keyspace.svg)
+
+</details>
 
 ---
 
 ## Quick start
 
-### Prerequisites
-
-- Node.js ≥ 22
-- npm ≥ 10
-- Redis 7+ (optional for development)
-- A GitHub OAuth App (for sign-in)
-
-### 1. Clone and install
+**Prerequisites:** Node.js ≥ 22.18, npm ≥ 10, and optionally Redis 7+ and a
+[GitHub OAuth App](https://github.com/settings/developers) for sign-in.
 
 ```bash
 git clone https://github.com/Priyadharsan-85/SyncForge.git
 cd SyncForge
 npm install
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-# Edit .env and fill in SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
-```
-
-See [`.env.example`](.env.example) for every available option and guidance on creating a GitHub OAuth App.
-
-### 3. Start development servers
-
-```bash
+cp .env.example .env      # fill in SESSION_SECRET and the GitHub OAuth app
 npm run dev
 ```
 
-This concurrently starts:
-- Vite dev server at `http://localhost:5173`
-- Express + Socket.IO server at `http://localhost:3001`
+`npm run dev` starts Vite on <http://localhost:5173> and the API on
+<http://localhost:3001>; Vite proxies `/api`, `/auth` and `/socket.io` to the
+server, and the server loads `.env` automatically. Set the OAuth App's callback
+URL to `http://localhost:5173/auth/github/callback`.
 
-Open `http://localhost:5173` in your browser.
-
-### 4. Run tests
-
-```bash
-npm test
-```
-
----
-
-## Production deployment
-
-### Docker Compose (recommended)
-
-```bash
-cp .env.example .env
-# Edit .env
-docker compose up -d
-```
-
-The Compose file starts Redis, the Node.js server, and an Nginx static file server for the built client.
-
-### Manual
-
-```bash
-# Build the client
-npm run build --workspace client
-
-# Start the server
-NODE_ENV=production node server/src/index.js
-```
-
-Serve the built files in `client/dist` from your CDN or static server and point `CLIENT_ORIGIN` at the domain.
+| Command | What it does |
+|---|---|
+| `npm run dev` | Client and server with hot reload |
+| `npm test` | Client and server test suites (`node:test`, 260+ tests) |
+| `npm run lint` | oxlint over the client |
+| `npm run build` | Type-check and build the client into `client/dist` |
+| `npm start` | Run the server; it also serves `client/dist` when present |
+| `npm run ci` | Everything CI runs: test, lint, build |
 
 ---
 
-## Environment variables
+## Deployment
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Priyadharsan-85/SyncForge)
+
+![Deployment topology](docs/assets/deployment.svg)
+
+One image serves the API, WebSockets and the client from a single origin.
+
+- **Render** — click the button above; [`render.yaml`](render.yaml) provisions the app and a private Redis.
+- **Self-hosted** — `docker compose up -d --build` runs Redis, the app and nginx.
+- **Anywhere else** — `ghcr.io/priyadharsan-85/syncforge:main` plus a Redis URL.
+
+The full walkthrough, including the OAuth App setup and troubleshooting, is in
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
+### Configuration
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PORT` | No | `3001` | Server listen port |
-| `CLIENT_ORIGIN` | No | `http://localhost:5173` | Allowed CORS origin for the browser client |
-| `SESSION_SECRET` | **Yes (prod)** | — | Secret for signing session cookies |
-| `REDIS_URL` | No | — | Redis connection URL; omit for memory-only mode |
-| `REDIS_COMPACTION_THRESHOLD` | No | `500` | Yjs update count before room compaction |
-| `GITHUB_CLIENT_ID` | **Yes** | — | GitHub OAuth App client ID |
-| `GITHUB_CLIENT_SECRET` | **Yes** | — | GitHub OAuth App client secret |
-| `GITHUB_CALLBACK_URL` | No | Derived from `CLIENT_ORIGIN` | OAuth redirect URI |
+| `CLIENT_ORIGIN` | prod | `RENDER_EXTERNAL_URL` or `http://localhost:5173` | Public URL of the app |
+| `SESSION_SECRET` | prod (≥ 32 chars) | — | Signs session cookies |
+| `REDIS_URL` | prod | — | Redis connection URL; omit for in-memory dev mode |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | prod | — | GitHub OAuth App credentials |
+| `GITHUB_CALLBACK_URL` | no | `<CLIENT_ORIGIN>/auth/github/callback` | OAuth redirect override |
+| `PORT` | no | `3001` | Listen port |
+| `METRICS_TOKEN` | no | — | Bearer token for `/metrics` in production |
+| `REDIS_COMPACTION_THRESHOLD` | no | `500` | Updates per room before snapshot compaction |
+| `SERVE_CLIENT` / `CLIENT_DIST_DIR` | no | `true` / `client/dist` | Serve the built client from the server |
+
+Every option is explained in [`.env.example`](.env.example).
 
 ---
 
-## API reference
+## Project structure
 
-### Authentication
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/auth/me` | Return the authenticated user |
-| `GET` | `/auth/github` | Redirect to GitHub OAuth |
-| `GET` | `/auth/github/callback` | OAuth callback |
-| `POST` | `/auth/logout` | Clear the session cookie |
-
-### Workspaces
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/workspaces` | List workspaces for the current user |
-| `POST` | `/api/workspaces` | Create a blank workspace |
-| `POST` | `/api/workspaces/import/local` | Import a local project (file array) |
-| `POST` | `/api/workspaces/import/github` | Import a public GitHub repository |
-| `PATCH` | `/api/workspaces/:roomId` | Rename a workspace |
-| `DELETE` | `/api/workspaces/:roomId` | Delete a workspace (owner only) |
-| `POST` | `/api/workspaces/:roomId/invites` | Create an invite link |
-
-### Branches & commits
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/workspaces/:roomId/branches` | List branches |
-| `POST` | `/api/workspaces/:roomId/branches` | Create a branch |
-| `GET` | `/api/workspaces/:roomId/branches/:branch/commits` | List commits on a branch |
-| `POST` | `/api/workspaces/:roomId/branches/:branch/commits` | Commit a snapshot |
-| `POST` | `/api/workspaces/:roomId/branches/:branch/sync-live` | Sync branch to live workspace |
-| `POST` | `/api/workspaces/:roomId/branches/:branch/export-patch` | Export branch as `.patch` |
-
-### Pull requests
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/workspaces/:roomId/pulls` | List pull requests |
-| `POST` | `/api/workspaces/:roomId/pulls` | Create a pull request |
-| `GET` | `/api/workspaces/:roomId/pulls/:prNumber` | Get a pull request |
-| `GET` | `/api/workspaces/:roomId/pulls/:prNumber/diff` | Get PR diff |
-| `POST` | `/api/workspaces/:roomId/pulls/:prNumber/merge` | Merge a pull request |
-| `POST` | `/api/workspaces/:roomId/pulls/:prNumber/close` | Close a pull request |
-| `POST` | `/api/workspaces/:roomId/pulls/:prNumber/export-patch` | Export PR as `.patch` |
-
-### AI assistant
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/workspaces/:roomId/ai/draft` | Generate an AI draft patch |
-| `GET` | `/api/workspaces/:roomId/ai/drafts` | List your drafts |
-| `POST` | `/api/workspaces/:roomId/ai/rebase` | Rebase a draft against live content |
-| `DELETE` | `/api/workspaces/:roomId/ai/drafts/:draftId` | Discard a draft |
+```
+SyncForge/
+├── client/                 React + Vite single-page app
+│   ├── src/
+│   │   ├── App.tsx             workspace shell, sync lifecycle
+│   │   ├── CodeEditor.tsx      bundled Monaco + web workers (lazy chunk)
+│   │   ├── editorBinding.ts    Yjs ⇄ Monaco binding
+│   │   ├── BranchManagerModal.tsx, AiAssistantModal.tsx, CommandPalette.tsx, …
+│   └── test/               node:test suites for pure modules
+├── server/
+│   ├── src/
+│   │   ├── index.js            HTTP routes and Socket.IO
+│   │   ├── config.js           validated environment config
+│   │   ├── staticClient.js     SPA serving with a strict CSP
+│   │   ├── redisStore.js       update streams + compaction
+│   │   ├── branchManager.js, pullRequestManager.js, semanticMerge.js, diffPatch.js
+│   │   ├── workspaceAccess.js, auth.js, rateLimit.js
+│   │   └── metrics.js, buildInfo.js, errorHandler.js, requestLogger.js
+│   └── test/               unit + integration tests (Redis-backed when available)
+├── docs/                   API, deployment guide, diagrams, screenshots
+├── Dockerfile              multi-stage production image
+├── docker-compose.yml      Redis + app + nginx
+└── render.yaml             Render Blueprint
+```
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for how to report vulnerabilities.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+and the [changelog](CHANGELOG.md). Please report security issues privately as
+described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) © SyncForge contributors
