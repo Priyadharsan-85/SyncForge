@@ -6,8 +6,11 @@ const serverUrl = process.env.LOAD_TEST_URL ?? 'http://localhost:3001'
 const origin = process.env.LOAD_TEST_ORIGIN ?? 'http://localhost:5173'
 const cookie = process.env.LOAD_TEST_COOKIE
 const clientCount = Number(process.env.LOAD_TEST_CLIENTS ?? 100)
-const roomPrefix = process.env.LOAD_TEST_ROOM_PREFIX ?? 'load'
-const roomId = `${roomPrefix}-${randomUUID().slice(0, 8)}`
+const MAX_CLIENTS = 2_000
+// Joining requires workspace membership, so by default the test creates a
+// fresh workspace owned by the cookie's user. LOAD_TEST_ROOM reuses one.
+const existingRoomId = process.env.LOAD_TEST_ROOM
+let roomId = existingRoomId
 const timeoutMs = 15_000
 const failures = { connection: 0, join: 0, update: 0 }
 const clients = []
@@ -21,12 +24,25 @@ function assertConfiguration() {
   if (typeof cookie !== 'string' || !cookie.startsWith('syncforge_session=')) {
     throw new Error('Set LOAD_TEST_COOKIE to a valid syncforge_session cookie.')
   }
-  if (!Number.isInteger(clientCount) || clientCount < 1 || clientCount > 500) {
-    throw new Error('LOAD_TEST_CLIENTS must be an integer from 1 to 500.')
+  if (!Number.isInteger(clientCount) || clientCount < 1 || clientCount > MAX_CLIENTS) {
+    throw new Error(`LOAD_TEST_CLIENTS must be an integer from 1 to ${MAX_CLIENTS}.`)
   }
-  if (!/^[a-zA-Z0-9_-]{1,39}$/.test(roomPrefix)) {
-    throw new Error('LOAD_TEST_ROOM_PREFIX must contain 1–39 letters, numbers, dashes or underscores.')
+  if (existingRoomId !== undefined && !/^[a-zA-Z0-9_-]{3,48}$/.test(existingRoomId)) {
+    throw new Error('LOAD_TEST_ROOM must be an existing workspace room ID.')
   }
+}
+
+async function createWorkspace() {
+  const response = await fetch(new URL('/api/workspaces', serverUrl), {
+    method: 'POST',
+    headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: `Load test ${randomUUID().slice(0, 8)}` }),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok || typeof body.roomId !== 'string') {
+    throw new Error(`Could not create a workspace (${response.status}): ${body.error ?? 'unknown error'}`)
+  }
+  return body.roomId
 }
 
 function waitForConnect(socket) {
@@ -83,6 +99,7 @@ async function waitForConvergence(markers) {
 
 async function run() {
   assertConfiguration()
+  roomId ??= await createWorkspace()
   const startedAt = performance.now()
 
   try {
