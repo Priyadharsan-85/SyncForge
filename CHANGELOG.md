@@ -9,7 +9,43 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [1.0.0] — 2026-11-26
+
+First production release.
+
 ### Added
+- The server serves the built client (`client/dist`) with an HTML-specific CSP, immutable asset caching and an SPA fallback, so one container hosts the whole app
+- Validated configuration module that lists every problem at boot and falls back to Render's `RENDER_EXTERNAL_URL`
+- Render Blueprint (`render.yaml`) with a private Key Value instance and generated secrets
+- CI job that builds the production image and smoke-tests it against Redis
+- Client test suite (`node:test` with type stripping) for binary decoding, language detection and command ranking
+- Dependabot for npm, GitHub Actions and Docker base images
+- `docs/DEPLOYMENT.md`, `docs/API.md`, a deployment topology diagram and product screenshots
+- `npm run dev` loads the root `.env` automatically
+
+### Changed
+- Monaco is bundled locally with Vite-built web workers and lazy-loaded, instead of fetched from a CDN
+- Docker Compose builds the image itself; nginx is now a WebSocket-aware reverse proxy only
+- The image sets `NODE_ENV=production`, records the commit SHA and probes `/health` for liveness
+- Graceful shutdown is bounded to 10 seconds and unhandled rejections are logged
+- Minimum Node.js version is 22.18
+
+### Fixed
+- Joining a room in the browser threw "Unexpected end of array" because Socket.IO delivers binary payloads as `ArrayBuffer`; rooms never reached the Live state
+- The Docker image failed to build because the client was compiled on Alpine without musl native bindings
+- `docker compose up` required a host-side client build
+- The top bar read "Workspace" when a room was opened from a link
+- Hidden file actions truncated sidebar file names
+- Escape did not close dialogs, and the AI and branch dialogs could stack
+
+### Removed
+- Stale `client/Dockerfile`, `server/Dockerfile` and `server/.env.example`
+
+### Pre-release development included in 1.0.0
+
+#### Added
 - Workspace delete endpoint (owner only) with Yjs document cleanup
 - Workspace rename endpoint (owner only)
 - File delete and rename in the collaborative workspace sidebar
@@ -33,7 +69,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `CHANGELOG.md` (this file)
 - GitHub feature request and PR templates
 
-### Tests added (167 passing, 2 skipped)
+#### Tests added (167 passing, 2 skipped)
 - Workspace rename and delete lifecycle tests
 - Workspace management integration tests
 - Diff/patch edge cases (CRLF, empty strings, multi-hunk)
@@ -47,7 +83,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Request logger unit tests
 - Metrics module unit tests
 
-### Fixed
+#### Fixed
 - `workspaceAccess.test.js` refactored to use unique room IDs per test to prevent cross-test state leakage
 - Request logger now reads `NODE_ENV` dynamically instead of at module load time
 

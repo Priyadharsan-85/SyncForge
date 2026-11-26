@@ -1,7 +1,7 @@
 {
   "name": "@syncforge/server",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=../.env --watch src/index.js",
