@@ -75,6 +75,7 @@ import { requestLogger } from './requestLogger.js'
 import { errorHandler, notFoundHandler } from './errorHandler.js'
 import { getBuildInfo } from './buildInfo.js'
 import { assertValidConfig, loadConfig } from './config.js'
+import { connectRedisOrFail } from './redisConnect.js'
 import { createStaticClientRouter, resolveClientDist } from './staticClient.js'
 import {
   adjustGauge,
@@ -1385,7 +1386,7 @@ async function start() {
     persistenceClient = createClient({ url: REDIS_URL })
     redisConnections.push(persistenceClient)
     persistenceClient.on('error', (error) => console.error('Redis persistence error:', error))
-    await persistenceClient.connect()
+    await connectRedisOrFail(persistenceClient, { label: 'Redis persistence' })
 
     const pubClient = persistenceClient.duplicate()
     const subClient = persistenceClient.duplicate()
@@ -1397,10 +1398,10 @@ async function start() {
     updatePublisher.on('error', (error) => console.error('Document update publisher error:', error))
     updateSubscriber.on('error', (error) => console.error('Document update subscriber error:', error))
     await Promise.all([
-      pubClient.connect(),
-      subClient.connect(),
-      updatePublisher.connect(),
-      updateSubscriber.connect(),
+      connectRedisOrFail(pubClient, { label: 'Redis publisher' }),
+      connectRedisOrFail(subClient, { label: 'Redis subscriber' }),
+      connectRedisOrFail(updatePublisher, { label: 'Document update publisher' }),
+      connectRedisOrFail(updateSubscriber, { label: 'Document update subscriber' }),
     ])
     io.adapter(createAdapter(pubClient, subClient))
     await updateSubscriber.subscribe('syncforge:document-updates', async (message) => {
@@ -1423,7 +1424,17 @@ async function start() {
 
 start().catch((error) => {
   console.error('SyncForge server failed to start:', error)
-  process.exitCode = 1
+  // Exit outright: node-redis clients that never connected keep retrying and
+  // would otherwise hold the process open, so a broken deploy hangs instead
+  // of failing.
+  for (const client of redisConnections) {
+    try {
+      client.destroy()
+    } catch {
+      // Already closed.
+    }
+  }
+  process.exit(1)
 })
 
 // Platforms send SIGTERM and then SIGKILL after a grace period (Render and
