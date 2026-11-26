@@ -7,6 +7,7 @@ export interface ShortcutHandlers {
   onToggleBranch?: () => void
   onCopyInvite?: () => void
   onLeave?: () => void
+  onEscape?: () => void
 }
 
 /**
@@ -18,7 +19,7 @@ export interface ShortcutHandlers {
  * Ctrl/Cmd + Shift + A — toggle AI assistant
  * Ctrl/Cmd + Shift + B — toggle branch manager
  * Ctrl/Cmd + Shift + I — copy invite link
- * Escape — no-op (modals handle their own escape)
+ * Escape — close the open dialog
  */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers, enabled: boolean) {
   useEffect(() => {
@@ -26,6 +27,11 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers, enabled: boolea
 
     function handleKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey
+
+      if (event.key === 'Escape' && !mod && !event.shiftKey && !event.altKey) {
+        handlers.onEscape?.()
+        return
+      }
 
       // Ctrl/Cmd+K has no Shift, so it is checked before the Shift block.
       // Browsers bind it to the address bar, hence the preventDefault.

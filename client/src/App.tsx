@@ -936,11 +936,28 @@ function App() {
   const shortcutHandlers = useMemo(() => ({
     onTogglePalette: () => { if (roomId) setShowPalette((v) => !v) },
     onNewFile: () => { if (roomId) openNewFileDialog() },
-    onToggleAi: () => { if (roomId && activeFile) setShowAiModal((v) => !v) },
-    onToggleBranch: () => { if (roomId) setShowBranchModal((v) => !v) },
+    // The AI and branch dialogs are mutually exclusive: opening one closes
+    // the other instead of stacking two modal backdrops.
+    onToggleAi: () => {
+      if (!roomId || !activeFile) return
+      setShowBranchModal(false)
+      setShowAiModal((v) => !v)
+    },
+    onToggleBranch: () => {
+      if (!roomId) return
+      setShowAiModal(false)
+      setShowBranchModal((v) => !v)
+    },
     onCopyInvite: () => { if (roomId && workspaceRole === 'owner') void copyInvite() },
+    onEscape: () => {
+      // The palette closes itself; don't also dismiss the dialog beneath it.
+      if (showPalette) return
+      setShowShortcutsHelp(false)
+      setShowAiModal(false)
+      setShowBranchModal(false)
+    },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [roomId, activeFile, workspaceRole])
+  }), [roomId, activeFile, workspaceRole, showPalette])
 
   useKeyboardShortcuts(shortcutHandlers, !!roomId && !!user)
 
