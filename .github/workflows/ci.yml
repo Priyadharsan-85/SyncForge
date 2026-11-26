@@ -61,3 +61,45 @@ jobs:
 
       - name: Type-check and build client
         run: npm run build
+
+  docker-smoke:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --build-arg GIT_COMMIT=${{ github.sha }} -t syncforge:ci .
+
+      - name: Start Redis and the app in production mode
+        run: |
+          docker network create sf
+          docker run -d --name redis --network sf redis:7-alpine
+          docker run -d --name app --network sf -p 3001:3001 \
+            -e REDIS_URL=redis://redis:6379 \
+            -e CLIENT_ORIGIN=http://localhost:3001 \
+            -e SESSION_SECRET=ci-only-secret-that-is-at-least-32-chars \
+            -e GITHUB_CLIENT_ID=ci -e GITHUB_CLIENT_SECRET=ci \
+            syncforge:ci
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:3001/ready && exit 0
+            sleep 1
+          done
+          docker logs app
+          exit 1
+
+      - name: Check API, SPA and 404 behaviour
+        run: |
+          set -e
+          curl -fs http://localhost:3001/health
+          curl -fs http://localhost:3001/api/version | grep -q '"commit":"${{ github.sha }}"'
+          curl -fs http://localhost:3001/ | grep -q '<div id="root">'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/does-not-exist)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/metrics)" = 401
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs app
