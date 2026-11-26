@@ -74,6 +74,7 @@ import {
 import { requestLogger } from './requestLogger.js'
 import { errorHandler, notFoundHandler } from './errorHandler.js'
 import { getBuildInfo } from './buildInfo.js'
+import { createStaticClientRouter, resolveClientDist } from './staticClient.js'
 import {
   adjustGauge,
   getMetrics,
@@ -1098,6 +1099,12 @@ app.get('/metrics', (request, response) => {
   }
   response.json(getMetrics())
 })
+
+// Built client (client/dist), when present: lets one process serve the whole
+// app from a single origin. Mounted after every API route so it never
+// shadows one, and before the JSON 404 so unknown API paths still get it.
+const clientDist = resolveClientDist()
+if (clientDist) app.use(createStaticClientRouter(clientDist))
 
 // Terminal middleware — must stay last so every route above can fall
 // through to them. Express 5 forwards rejected async route handlers here
