@@ -1426,10 +1426,24 @@ start().catch((error) => {
   process.exitCode = 1
 })
 
+// Platforms send SIGTERM and then SIGKILL after a grace period (Render and
+// Docker default to ~10–30s). Finish in-flight work if we can, but never
+// outlive that window with a half-closed process.
+const SHUTDOWN_GRACE_MS = 10_000
+
 let shuttingDown = false
-async function shutdown() {
+async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
+  console.log(JSON.stringify({ level: 'INFO', msg: 'Shutting down', signal }))
+  const forceExit = setTimeout(() => {
+    console.error('Graceful shutdown timed out; exiting.')
+    process.exit(1)
+  }, SHUTDOWN_GRACE_MS)
+  forceExit.unref()
+
+  // io.close() also closes the underlying HTTP server, so no new requests
+  // or socket handshakes are accepted from here on.
   await new Promise((resolve) => io.close(resolve))
   for (const timer of roomEvictionTimers.values()) clearTimeout(timer)
   roomEvictionTimers.clear()
@@ -1447,5 +1461,11 @@ async function shutdown() {
   )
 }
 
-process.once('SIGINT', () => void shutdown())
-process.once('SIGTERM', () => void shutdown())
+process.once('SIGINT', () => void shutdown('SIGINT'))
+process.once('SIGTERM', () => void shutdown('SIGTERM'))
+
+// Log, don't crash, on a stray rejected promise: one bad request handler
+// should not take every connected editor down with it.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason)
+})
