@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
+    "dev": "node --env-file-if-exists=../.env --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test",
     "load-test": "node scripts/loadtest.js"
@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "socket.io-client": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }
