@@ -9,7 +9,7 @@
     "url": "git+https://github.com/Priyadharsan-85/SyncForge.git"
   },
   "engines": {
-    "node": ">=22.12",
+    "node": ">=22.18",
     "npm": ">=10"
   },
   "workspaces": [
@@ -21,7 +21,7 @@
     "build": "npm run build --workspace client",
     "start": "npm run start --workspace server",
     "lint": "npm run lint --workspace client",
-    "test": "npm run test --workspace server",
+    "test": "npm run test --workspaces",
     "ci": "npm run test && npm run lint && npm run build"
   },
   "devDependencies": {
