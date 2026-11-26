@@ -28,6 +28,37 @@ function read(env, name) {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+/** Strip one layer of matching quotes, a common copy-paste artefact in dashboards. */
+function unquote(value) {
+  if (value === undefined) return undefined
+  const match = /^(["'])(.*)\1$/.exec(value)
+  return match ? match[2].trim() : value
+}
+
+/**
+ * Why a Redis URL is unusable, or null when it is fine. Never includes the
+ * URL itself: it carries the password and ends up in deploy logs.
+ *
+ * @param {string} raw
+ * @returns {string | null}
+ */
+export function redisUrlProblem(raw) {
+  if (/^redis-cli\b/.test(raw)) {
+    return 'REDIS_URL contains a redis-cli command; use only the redis:// or rediss:// URL that follows "-u".'
+  }
+  let url
+  try {
+    url = new URL(raw)
+  } catch {
+    return 'REDIS_URL is not a valid URL. Expected redis://[user:password@]host:port, or rediss://… for TLS; URL-encode special characters (#, @, /, ?) in the password.'
+  }
+  if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+    return `REDIS_URL must start with redis:// or rediss://, not ${url.protocol}// (an https:// URL is a REST API, not the Redis endpoint).`
+  }
+  if (!url.hostname) return 'REDIS_URL is missing a host name.'
+  return null
+}
+
 function parseOrigin(raw, name) {
   try {
     return new URL(raw).origin
@@ -50,7 +81,7 @@ export function loadConfig(env = process.env) {
     production: env.NODE_ENV === 'production',
     port: Number(read(env, 'PORT') ?? DEFAULT_PORT),
     clientOrigin,
-    redisUrl: read(env, 'REDIS_URL'),
+    redisUrl: unquote(read(env, 'REDIS_URL')),
     redisCompactionThreshold: Number(read(env, 'REDIS_COMPACTION_THRESHOLD') ?? DEFAULT_COMPACTION_THRESHOLD),
     sessionSecret: read(env, 'SESSION_SECRET') ?? '',
     githubClientId: read(env, 'GITHUB_CLIENT_ID'),
@@ -70,6 +101,10 @@ export function configProblems(config) {
   const problems = []
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65_535) {
     problems.push('PORT must be an integer between 0 and 65535.')
+  }
+  if (config.redisUrl) {
+    const problem = redisUrlProblem(config.redisUrl)
+    if (problem) problems.push(problem)
   }
   if (
     config.redisUrl &&

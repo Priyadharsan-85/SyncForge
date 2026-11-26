@@ -81,3 +81,26 @@ test('rejects out-of-range ports and bad compaction thresholds', () => {
   // The threshold only matters when Redis is in use.
   assert.deepEqual(configProblems(loadConfig({ REDIS_COMPACTION_THRESHOLD: '0' })), [])
 })
+
+test('accepts redis:// and rediss:// URLs, including Upstash-style TLS URLs', () => {
+  for (const url of ['redis://localhost:6379', 'rediss://default:secret@eu1-x.upstash.io:6379']) {
+    assert.deepEqual(configProblems(loadConfig({ REDIS_URL: url })), [], url)
+  }
+})
+
+test('strips quotes pasted around REDIS_URL', () => {
+  assert.equal(loadConfig({ REDIS_URL: '"rediss://default:s@x.upstash.io:6379"' }).redisUrl, 'rediss://default:s@x.upstash.io:6379')
+})
+
+test('explains common REDIS_URL mistakes without echoing the secret', () => {
+  const cases = [
+    ['redis-cli --tls -u redis://default:hunter2@x.upstash.io:6379', /redis-cli command/],
+    ['rediss://default:hun#ter2@x.upstash.io:6379', /not a valid URL/],
+    ['https://x.upstash.io', /must start with redis:\/\/ or rediss:\/\//],
+  ]
+  for (const [url, expected] of cases) {
+    const problems = configProblems(loadConfig({ REDIS_URL: url })).join('\n')
+    assert.match(problems, expected, url)
+    assert.doesNotMatch(problems, /hunter2|hun#ter2/)
+  }
+})
