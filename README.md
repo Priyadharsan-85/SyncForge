@@ -17,6 +17,15 @@
 </p>
 
 <p align="center">
+  <a href="https://syncforge-oj5v.onrender.com/"><img src="https://img.shields.io/badge/Live%20demo-syncforge--oj5v.onrender.com-c3f56b?style=for-the-badge" alt="Live demo" /></a>
+</p>
+
+<p align="center">
+  <sub>Hosted on a free tier — the first visit after a quiet spell can take up to a minute to wake the server.</sub>
+</p>
+
+<p align="center">
+  <a href="https://syncforge-oj5v.onrender.com/"><b>Live demo</b></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/API.md">API</a> ·
