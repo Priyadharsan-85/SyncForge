@@ -18,7 +18,6 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="docs/DEPLOYMENT.md">Deploy</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/API.md">API</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -74,7 +73,7 @@
 | Server | Node.js 22+, Express 5, Socket.IO 4, Yjs |
 | Storage | Redis 7 — document streams, metadata, rate limits, pub/sub (in-memory fallback for development) |
 | Auth | GitHub OAuth, HMAC-signed session cookies |
-| Delivery | Multi-stage Docker image, Docker Compose + nginx, Render Blueprint, GitHub Actions, GHCR |
+| Tooling | Docker, GitHub Actions |
 
 ---
 
@@ -140,26 +139,11 @@ URL to `http://localhost:5173/auth/github/callback`.
 
 ---
 
-## Deployment
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Priyadharsan-85/SyncForge)
-
-![Deployment topology](docs/assets/deployment.svg)
-
-One image serves the API, WebSockets and the client from a single origin.
-
-- **Render** — click the button above; [`render.yaml`](render.yaml) provisions the app and a private Redis.
-- **Self-hosted** — `docker compose up -d --build` runs Redis, the app and nginx.
-- **Anywhere else** — `ghcr.io/priyadharsan-85/syncforge:main` plus a Redis URL.
-
-The full walkthrough, including the OAuth App setup and troubleshooting, is in
-**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
-
-### Configuration
+## Configuration
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CLIENT_ORIGIN` | prod | `RENDER_EXTERNAL_URL` or `http://localhost:5173` | Public URL of the app |
+| `CLIENT_ORIGIN` | prod | `http://localhost:5173` | Public URL of the app |
 | `SESSION_SECRET` | prod (≥ 32 chars) | — | Signs session cookies |
 | `REDIS_URL` | prod | — | Redis connection URL; omit for in-memory dev mode |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | prod | — | GitHub OAuth App credentials |
@@ -194,10 +178,9 @@ SyncForge/
 │   │   ├── workspaceAccess.js, auth.js, rateLimit.js
 │   │   └── metrics.js, buildInfo.js, errorHandler.js, requestLogger.js
 │   └── test/               unit + integration tests (Redis-backed when available)
-├── docs/                   API, deployment guide, diagrams, screenshots
+├── docs/                   API reference, diagrams, screenshots
 ├── Dockerfile              multi-stage production image
-├── docker-compose.yml      Redis + app + nginx
-└── render.yaml             Render Blueprint
+└── docker-compose.yml      Redis + app + nginx
 ```
 
 ---
