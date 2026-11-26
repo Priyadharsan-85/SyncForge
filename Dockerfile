@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: build the React client ──────────────────────────────────────────
-FROM node:22-alpine AS client-builder
+# Debian (glibc), not Alpine: Vite's rolldown and lightningcss ship native
+# binaries, and the lockfile pins the linux-x64-gnu builds. On musl the build
+# fails with "Cannot find native binding".
+FROM node:22-bookworm-slim AS client-builder
 
 WORKDIR /build
 
