@@ -58,10 +58,26 @@ The dev server proxies all `/api`, `/auth`, and `/socket.io` requests from Vite 
 ## Running tests
 
 ```bash
-npm test          # run all server tests
+npm test                         # client + server suites
+npm run test --workspace server  # server only
+npm run test --workspace client  # client only
+npm run ci                       # tests, lint and build — what CI runs
 ```
 
-The server tests use Node's built-in test runner (`node --test`). No external test framework is needed.
+Both suites use Node's built-in test runner (`node --test`); client tests run
+TypeScript directly through Node's type stripping, so no extra framework is
+needed. Redis-backed integration tests run when `REDIS_TEST_URL` is set:
+
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+REDIS_TEST_URL=redis://127.0.0.1:6379 npm test
+```
+
+To check the production image locally:
+
+```bash
+docker build -t syncforge:local .
+```
 
 ---
 
@@ -72,7 +88,8 @@ The server tests use Node's built-in test runner (`node --test`). No external te
    git checkout -b feat/your-feature
    ```
 2. Write your changes. Keep each commit focused on one thing.
-3. Add or update tests if you are changing server-side logic.
+3. Add or update tests for the behaviour you change — server modules in
+   `server/test/`, pure client modules in `client/test/`.
 4. Make sure `npm test` passes with zero failures.
 5. Run `npm run lint` to check for client-side linting issues.
 6. Open a pull request with a clear title and a description of what changes and why.
