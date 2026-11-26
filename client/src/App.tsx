@@ -31,6 +31,7 @@ import {
 import './App.css'
 import { AiAssistantModal } from './AiAssistantModal'
 import { BranchManagerModal } from './BranchManagerModal'
+import { toBytes, type BinaryPayload } from './binary'
 import { bindYTextToMonaco } from './editorBinding'
 import {
   exportWorkspaceZip,
@@ -63,8 +64,8 @@ type ConnectionState = 'connecting' | 'connected' | 'offline'
 type JoinResponse = {
   ok: boolean
   retryable?: boolean
-  state?: Uint8Array
-  stateVector?: Uint8Array
+  state?: BinaryPayload
+  stateVector?: BinaryPayload
   role?: Workspace['role']
   members?: Member[]
   error?: string
@@ -425,8 +426,8 @@ function App() {
           joinRetryPending = false
           setError('')
         }
-        Y.applyUpdate(doc, response.state, socket)
-        serverStateVector = response.stateVector
+        Y.applyUpdate(doc, toBytes(response.state), socket)
+        serverStateVector = response.stateVector ? toBytes(response.stateVector) : undefined
         joined = true
         setWorkspaceRole(response.role ?? '')
         if (inviteTokenRef.current) {
@@ -475,8 +476,8 @@ function App() {
       }
       setConnection('offline')
     })
-    socket.on('document:update', (update: Uint8Array) => {
-      Y.applyUpdate(doc, update, socket)
+    socket.on('document:update', (update: BinaryPayload) => {
+      Y.applyUpdate(doc, toBytes(update), socket)
       ensureInitialFile()
     })
     socket.on('presence:update', (nextMembers: Member[]) => setMembers(nextMembers))
