@@ -56,6 +56,11 @@ export function redisUrlProblem(raw) {
     return `REDIS_URL must start with redis:// or rediss://, not ${url.protocol}// (an https:// URL is a REST API, not the Redis endpoint).`
   }
   if (!url.hostname) return 'REDIS_URL is missing a host name.'
+  // Upstash only accepts TLS. A plain redis:// URL connects and is closed at
+  // once, which node-redis reports as an endless "Socket closed unexpectedly".
+  if (url.protocol === 'redis:' && /\.upstash\.io$/i.test(url.hostname)) {
+    return 'REDIS_URL points at Upstash, which requires TLS: change redis:// to rediss://.'
+  }
   return null
 }
 

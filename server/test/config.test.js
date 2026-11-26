@@ -104,3 +104,9 @@ test('explains common REDIS_URL mistakes without echoing the secret', () => {
     assert.doesNotMatch(problems, /hunter2|hun#ter2/)
   }
 })
+
+test('rejects plain redis:// for TLS-only Upstash hosts', () => {
+  const problems = configProblems(loadConfig({ REDIS_URL: 'redis://default:hunter2@eu1-x.upstash.io:6379' })).join('\n')
+  assert.match(problems, /requires TLS: change redis:\/\/ to rediss:\/\//)
+  assert.doesNotMatch(problems, /hunter2/)
+})
