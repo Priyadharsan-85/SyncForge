@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useMemo, type ChangeEvent, type FormEvent } from 'react'
-import Editor, { type OnMount } from '@monaco-editor/react'
+import { lazy, Suspense, useEffect, useRef, useState, useMemo, type ChangeEvent, type FormEvent } from 'react'
+import type { OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { io } from 'socket.io-client'
 import { IndexeddbPersistence } from 'y-indexeddb'
@@ -44,6 +44,9 @@ import { ToastContainer } from './Toast'
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp'
 import { CommandPalette } from './CommandPalette'
 import type { Command } from './commandRanking'
+
+// Monaco is several megabytes; load it only when a workspace is opened.
+const Editor = lazy(() => import('./CodeEditor'))
 
 type Member = { id: string; name: string }
 type User = { id: string; login: string; name: string }
@@ -1305,6 +1308,7 @@ function App() {
           </div>
           <div className="editor-container">
             {!localReady && <div className="editor-loading">Restoring your workspace…</div>}
+            <Suspense fallback={<div className="editor-loading">Loading editor…</div>}>
             <Editor
               height="100%"
               language={activeFile ? languageForFile(activeFile.name) : 'javascript'}
@@ -1326,6 +1330,7 @@ function App() {
                 readOnly: false,
               }}
             />
+            </Suspense>
           </div>
           {error && (
             <div className="workspace-alert" role="status">
