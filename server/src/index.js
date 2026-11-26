@@ -74,6 +74,7 @@ import {
 import { requestLogger } from './requestLogger.js'
 import { errorHandler, notFoundHandler } from './errorHandler.js'
 import { getBuildInfo } from './buildInfo.js'
+import { assertValidConfig, loadConfig } from './config.js'
 import { createStaticClientRouter, resolveClientDist } from './staticClient.js'
 import {
   adjustGauge,
@@ -85,18 +86,18 @@ import {
 } from './metrics.js'
 
 
-const PORT = Number(process.env.PORT ?? 3001)
-const CLIENT_ORIGIN = new URL(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').origin
-const REDIS_URL = process.env.REDIS_URL
-const SESSION_SECRET = process.env.SESSION_SECRET ?? ''
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
-const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL ??
-  new URL('/auth/github/callback', CLIENT_ORIGIN).toString()
+const config = loadConfig()
+const PORT = config.port
+const CLIENT_ORIGIN = config.clientOrigin
+const REDIS_URL = config.redisUrl
+const SESSION_SECRET = config.sessionSecret
+const GITHUB_CLIENT_ID = config.githubClientId
+const GITHUB_CLIENT_SECRET = config.githubClientSecret
+const GITHUB_CALLBACK_URL = config.githubCallbackUrl
 const READINESS_TIMEOUT_MS = 1_000
 const ROOM_IDLE_TTL_MS = 60_000
 const MAX_DOCUMENT_UPDATE_BYTES = 8 * 1024 * 1024
-const REDIS_COMPACTION_THRESHOLD = Number(process.env.REDIS_COMPACTION_THRESHOLD ?? 500)
+const REDIS_COMPACTION_THRESHOLD = config.redisCompactionThreshold
 const rooms = new Map()
 const localRoomMembers = new Map()
 const roomEvictionTimers = new Map()
@@ -1378,18 +1379,7 @@ io.on('connection', (socket) => {
 })
 
 async function start() {
-  if (process.env.NODE_ENV === 'production' && !REDIS_URL) {
-    throw new Error('REDIS_URL is required in production for durable workspace storage.')
-  }
-  if (
-    process.env.NODE_ENV === 'production' &&
-    (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || SESSION_SECRET.length < 32)
-  ) {
-    throw new Error('GitHub OAuth credentials and a 32-character SESSION_SECRET are required in production.')
-  }
-  if (REDIS_URL && (!Number.isSafeInteger(REDIS_COMPACTION_THRESHOLD) || REDIS_COMPACTION_THRESHOLD < 1)) {
-    throw new Error('REDIS_COMPACTION_THRESHOLD must be a positive safe integer.')
-  }
+  assertValidConfig(config)
 
   if (REDIS_URL) {
     persistenceClient = createClient({ url: REDIS_URL })
