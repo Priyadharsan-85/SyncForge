@@ -4,7 +4,7 @@
 # Debian (glibc), not Alpine: Vite's rolldown and lightningcss ship native
 # binaries, and the lockfile pins the linux-x64-gnu builds. On musl the build
 # fails with "Cannot find native binding".
-FROM node:22-bookworm-slim AS client-builder
+FROM node:25-bookworm-slim AS client-builder
 
 WORKDIR /build
 
@@ -22,7 +22,7 @@ RUN npm run build --workspace client
 # ── Stage 2: production server image ─────────────────────────────────────────
 # One image serves the API, the Socket.IO endpoint and the built client from
 # a single origin, so it can run as-is on any container host.
-FROM node:22-alpine AS server
+FROM node:26-alpine AS server
 
 # The commit being built, surfaced by GET /api/version.
 ARG GIT_COMMIT=unknown
