@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run server tests
+      - name: Run client and server tests
         run: npm test
         env:
           REDIS_TEST_URL: redis://127.0.0.1:6379
