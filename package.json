@@ -2,6 +2,16 @@
   "name": "syncforge",
   "private": true,
   "version": "0.1.0",
+  "description": "Real-time collaborative code workspace with branches, pull requests and AI drafts.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Priyadharsan-85/SyncForge.git"
+  },
+  "engines": {
+    "node": ">=22.12",
+    "npm": ">=10"
+  },
   "workspaces": [
     "client",
     "server"
@@ -9,6 +19,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace client\" \"npm run dev --workspace server\"",
     "build": "npm run build --workspace client",
+    "start": "npm run start --workspace server",
     "lint": "npm run lint --workspace client",
     "test": "npm run test --workspace server",
     "ci": "npm run test && npm run lint && npm run build"
