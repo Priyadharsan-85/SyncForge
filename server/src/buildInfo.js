@@ -65,6 +65,7 @@ export function resolveFeatures() {
     githubOAuth: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
     sessionSigning: (process.env.SESSION_SECRET ?? '').length >= 32,
     metricsAuth: Boolean(process.env.METRICS_TOKEN),
+    githubApiToken: Boolean(process.env.GITHUB_API_TOKEN?.trim()),
   }
 }
 

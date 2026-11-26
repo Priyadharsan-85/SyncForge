@@ -89,6 +89,57 @@ export function parsePublicRepositoryUrl(value) {
   return { owner, repository }
 }
 
+/**
+ * GitHub signals rate limiting with 429, or with 403 plus either an exhausted
+ * `x-ratelimit-remaining` or a `retry-after` (secondary limits). A 403 without
+ * those is a real permission error and must not be reported as a rate limit.
+ *
+ * @param {Response} response
+ */
+export function isRateLimited(response) {
+  if (response.status === 429) return true
+  if (response.status !== 403) return false
+  return response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')
+}
+
+/**
+ * @param {Response} response
+ * @param {number} [now]
+ */
+export function rateLimitMessage(response, now = Date.now()) {
+  let waitSeconds = Number(response.headers.get('retry-after'))
+  if (!Number.isFinite(waitSeconds) || waitSeconds <= 0) {
+    const resetAt = Number(response.headers.get('x-ratelimit-reset')) * 1000
+    waitSeconds = Number.isFinite(resetAt) && resetAt > now ? (resetAt - now) / 1000 : 0
+  }
+  const minutes = Math.ceil(waitSeconds / 60)
+  return minutes > 0
+    ? `GitHub's API limit for this server is used up. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
+    : 'GitHub\'s API limit for this server is used up. Wait a little and try again.'
+}
+
+/**
+ * Wrap fetch so api.github.com requests carry the server's token, raising
+ * GitHub's limit from 60 to 5,000 requests an hour. Without a token every
+ * request counts against the shared outbound IP, which on hosted platforms
+ * is used by many other apps too. raw.githubusercontent.com is not sent the
+ * token: it is a different host and not part of the API quota.
+ *
+ * @param {typeof fetch} fetchImplementation
+ * @param {string | undefined} token
+ * @returns {typeof fetch}
+ */
+export function withGitHubAuth(fetchImplementation, token) {
+  if (!token) return fetchImplementation
+  return (url, init = {}) => {
+    if (new URL(url).hostname !== 'api.github.com') return fetchImplementation(url, init)
+    return fetchImplementation(url, {
+      ...init,
+      headers: { ...init.headers, Authorization: `Bearer ${token}` },
+    })
+  }
+}
+
 async function fetchGitHubJson(url, fetchImplementation) {
   let response
   try {
@@ -100,12 +151,15 @@ async function fetchGitHubJson(url, fetchImplementation) {
     throw new GitHubImportError(`Could not reach GitHub: ${error.message}`, 502)
   }
   if (!response.ok) {
-    const message = response.status === 403
-      ? 'GitHub rate limit reached. Wait a little and try again.'
-      : response.status === 404
-        ? 'Repository not found or it is not public.'
+    if (isRateLimited(response)) {
+      throw new GitHubImportError(rateLimitMessage(response), 429)
+    }
+    const message = response.status === 404
+      ? 'Repository not found or it is not public.'
+      : response.status === 401
+        ? 'GitHub rejected this server\'s API token. Ask the administrator to update GITHUB_API_TOKEN.'
         : `GitHub could not load the repository (HTTP ${response.status}).`
-    throw new GitHubImportError(message, response.status === 403 ? 429 : 502)
+    throw new GitHubImportError(message, 502)
   }
   try {
     return await response.json()
@@ -206,7 +260,18 @@ async function mapConcurrent(items, concurrency, callback) {
   return results
 }
 
-export async function importPublicGitHubRepository(repositoryUrl, fetchImplementation = fetch) {
+/**
+ * @param {string} repositoryUrl
+ * @param {typeof fetch} [baseFetch]
+ * @param {{ token?: string }} [options] Defaults to GITHUB_API_TOKEN.
+ */
+export async function importPublicGitHubRepository(
+  repositoryUrl,
+  baseFetch = fetch,
+  options = {},
+) {
+  const token = options.token ?? process.env.GITHUB_API_TOKEN?.trim()
+  const fetchImplementation = withGitHubAuth(baseFetch, token || undefined)
   const { owner, repository } = parsePublicRepositoryUrl(repositoryUrl)
   const baseUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`
   const repo = await fetchGitHubJson(baseUrl, fetchImplementation)

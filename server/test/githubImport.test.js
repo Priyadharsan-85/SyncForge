@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   importPublicGitHubRepository,
+  isRateLimited,
   parsePublicRepositoryUrl,
+  rateLimitMessage,
+  withGitHubAuth,
 } from '../src/githubImport.js'
 
 test('repository URL parsing only permits public github.com repository URLs', () => {
@@ -69,4 +72,56 @@ test('private GitHub repositories are rejected', async () => {
     ),
     /Only public/,
   )
+})
+
+function limitedResponse(status, headers) {
+  return new Response(JSON.stringify({ message: 'limited' }), { status, headers })
+}
+
+test('a 403 with an exhausted quota is reported as a rate limit with the reset time', async () => {
+  const resetAt = Math.floor(Date.now() / 1000) + 25 * 60
+  await assert.rejects(
+    importPublicGitHubRepository('https://github.com/example/project', async () =>
+      limitedResponse(403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetAt) }),
+    { token: '' }),
+    (error) => {
+      assert.equal(error.status, 429)
+      assert.match(error.message, /used up\. Try again in about 2[56] minutes/)
+      return true
+    },
+  )
+})
+
+test('secondary rate limits use retry-after', () => {
+  const response = limitedResponse(403, { 'retry-after': '30' })
+  assert.ok(isRateLimited(response))
+  assert.match(rateLimitMessage(response), /about 1 minute\./)
+})
+
+test('a 403 without rate-limit headers is not called a rate limit', async () => {
+  const response = limitedResponse(403, { 'x-ratelimit-remaining': '42' })
+  assert.equal(isRateLimited(response), false)
+  await assert.rejects(
+    importPublicGitHubRepository('https://github.com/example/project', async () => response, { token: '' }),
+    (error) => error.status === 502 && /HTTP 403/.test(error.message),
+  )
+})
+
+test('the API token is sent to api.github.com only', async () => {
+  const seen = []
+  const authed = withGitHubAuth(async (url, init) => {
+    seen.push([new URL(url).hostname, init?.headers?.Authorization])
+    return new Response('ok')
+  }, 'tok_123')
+  await authed('https://api.github.com/repos/a/b', { headers: { Accept: 'x' } })
+  await authed('https://raw.githubusercontent.com/a/b/sha/file.js')
+  assert.deepEqual(seen, [
+    ['api.github.com', 'Bearer tok_123'],
+    ['raw.githubusercontent.com', undefined],
+  ])
+})
+
+test('without a token, fetch is passed through untouched', () => {
+  const base = async () => new Response('ok')
+  assert.equal(withGitHubAuth(base, undefined), base)
 })

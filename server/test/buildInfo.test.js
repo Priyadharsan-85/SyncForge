@@ -15,6 +15,7 @@ const MANAGED_ENV_KEYS = [
   'GITHUB_CLIENT_SECRET',
   'SESSION_SECRET',
   'METRICS_TOKEN',
+  'GITHUB_API_TOKEN',
   'NODE_ENV',
 ]
 
@@ -81,6 +82,7 @@ test('resolveFeatures reports every subsystem as false when nothing is configure
       githubOAuth: false,
       sessionSigning: false,
       metricsAuth: false,
+      githubApiToken: false,
     })
   })
 })
@@ -93,6 +95,7 @@ test('resolveFeatures reports each subsystem as true once configured', () => {
       GITHUB_CLIENT_SECRET: 'client-secret',
       SESSION_SECRET: 'x'.repeat(64),
       METRICS_TOKEN: 'scrape-token',
+      GITHUB_API_TOKEN: 'github-token',
     },
     () => {
       assert.deepEqual(resolveFeatures(), {
@@ -100,6 +103,7 @@ test('resolveFeatures reports each subsystem as true once configured', () => {
         githubOAuth: true,
         sessionSigning: true,
         metricsAuth: true,
+        githubApiToken: true,
       })
     },
   )
