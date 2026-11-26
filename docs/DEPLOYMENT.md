@@ -115,5 +115,6 @@ connections, flushes and closes Redis, and exits within 10 seconds.
 | Boot fails with `Invalid configuration:` | The listed variables are missing or too short |
 | Sign-in returns to `?auth=unconfigured` | OAuth credentials or `SESSION_SECRET` not set |
 | Sign-in loops or `?auth=failed` | OAuth App callback URL doesn't match `<CLIENT_ORIGIN>/auth/github/callback` |
+| GitHub import says the API limit is used up | Set `GITHUB_API_TOKEN` — anonymous calls share a 60/hour limit with every app on the host's IP |
 | Editor stuck on "Connecting" | Proxy isn't forwarding WebSocket upgrades on `/socket.io` |
 | `403 Invalid request origin` | `CLIENT_ORIGIN` differs from the URL in the browser (scheme, host or port) |

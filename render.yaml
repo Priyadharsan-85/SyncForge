@@ -36,6 +36,9 @@ services:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
+      # Optional: lifts the GitHub import limit from 60 to 5,000 calls/hour.
+      - key: GITHUB_API_TOKEN
+        sync: false
 
   - type: keyvalue
     name: syncforge-redis

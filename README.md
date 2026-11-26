@@ -156,6 +156,7 @@ URL to `http://localhost:5173/auth/github/callback`.
 | `SESSION_SECRET` | prod (≥ 32 chars) | — | Signs session cookies |
 | `REDIS_URL` | prod | — | Redis connection URL; omit for in-memory dev mode |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | prod | — | GitHub OAuth App credentials |
+| `GITHUB_API_TOKEN` | recommended | — | Token for GitHub repository imports (5,000 instead of 60 API calls/hour); needs no permissions |
 | `GITHUB_CALLBACK_URL` | no | `<CLIENT_ORIGIN>/auth/github/callback` | OAuth redirect override |
 | `PORT` | no | `3001` | Listen port |
 | `METRICS_TOKEN` | no | — | Bearer token for `/metrics` in production |
